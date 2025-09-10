@@ -5,6 +5,7 @@ A model library for flutter.
 ## Requirements
 
 - flutter 3.19.6
+- Android SDK 2023.3.1 for android (recommended)
 
 ## Install and Run
 
