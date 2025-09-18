@@ -2,6 +2,13 @@
 
 A model library for flutter.
 
+## Supported Devices
+
+- Windows(native)
+- macOS(native)
+- Android
+- iOS
+
 ## Requirements
 
 - flutter 3.19.6
