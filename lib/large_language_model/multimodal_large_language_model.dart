@@ -26,7 +26,6 @@ class MultimodalLargeLanguageModel {
 
     // Initialize backend list before opening model
     List<String> backendList = AiliaLLMModel.getBackendList();
-    print("Available backends: $backendList");
 
     if (backendList.isEmpty) {
       throw Exception("No backends available for ailia LLM");
@@ -34,19 +33,18 @@ class MultimodalLargeLanguageModel {
 
     // Use the first available backend
     String backend = backendList[0];
-    print("Using backend: $backend");
 
     // Open the base text model
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
-    print("Loaded text model: ${model.path}");
 
     // Open the multimodal projector
     _ailiaLLMModel.openMultimodalProjectorFile(mmproj.path);
-    print("Loaded multimodal projector: ${mmproj.path}");
 
-    // Get and display multimodal capabilities
+    // Get multimodal capabilities to verify setup
     Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
-    print("Multimodal capabilities: Vision=${capabilities['vision']}, Audio=${capabilities['audio']}");
+    if (!capabilities['vision']!) {
+      throw Exception("Vision capabilities not available");
+    }
   }
 
   void setSystemPrompt(String prompt){
@@ -84,22 +82,18 @@ class MultimodalLargeLanguageModel {
 
     messages.add(userMessage);
 
-    print("Setting multimodal prompt with image: $imagePath");
     _ailiaLLMModel.setMultimodalPrompt(messages);
 
     String text = "";
-    print("Generating multimodal response...");
     while(true){
       String? deltaText = _ailiaLLMModel.generate();
       if (deltaText == null){
         break;
       }
       text = text + deltaText;
-      print("Generated token: $deltaText"); // Debug output
     }
 
     messages.add({"role": "assistant", "content": text});
-    print("Final response: $text");
     return text;
   }
 

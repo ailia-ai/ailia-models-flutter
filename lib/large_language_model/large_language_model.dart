@@ -22,7 +22,6 @@ class LargeLanguageModel {
 
     // Initialize backend list before opening model
     List<String> backendList = AiliaLLMModel.getBackendList();
-    print("Available backends: $backendList");
 
     if (backendList.isEmpty) {
       throw Exception("No backends available for ailia LLM");
@@ -30,7 +29,6 @@ class LargeLanguageModel {
 
     // Use the first available backend
     String backend = backendList[0];
-    print("Using backend: $backend");
 
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
   }
