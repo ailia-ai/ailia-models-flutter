@@ -57,7 +57,7 @@ dependencies:
       ref: main
 
   ailia_llm:
-    path: ./ailia_llm_plugin_package/flutter
+    path: ../ailia_llm_1_3_3_424_g21f5e21_dev/flutter
 
   path_provider:
   wav:
