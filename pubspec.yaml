@@ -57,9 +57,7 @@ dependencies:
       ref: main
 
   ailia_llm:
-    git:
-      url: https://github.com/axinc-ai/ailia-llm-flutter.git
-      ref: main
+    path: ./ailia_llm_plugin_package/flutter
 
   path_provider:
   wav:
@@ -67,6 +65,7 @@ dependencies:
   audioplayers:
   mic_stream:
   permission_handler:
+  http:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
