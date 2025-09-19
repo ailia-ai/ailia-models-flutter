@@ -23,18 +23,30 @@ class MultimodalLargeLanguageModel {
 
   void open(File model, File mmproj){
     int nCtx = 8192; // Context size for multimodal model
-    _ailiaLLMModel.open(model.path, nCtx);
-    
-    // Note: This is a simplified implementation
-    // In a full implementation, we would need to add FFI bindings for:
-    // - ailiaLLMOpenMultimodalProjectorFile(mmproj.path)
-    // - ailiaLLMGetMultimodalCapabilities()
-    // - ailiaLLMSetMultimodalPrompt()
-    
-    // For now, we'll simulate the functionality
-    print("Note: Using simplified multimodal implementation");
-    print("Loaded model: ${model.path}");
-    print("Loaded mmproj: ${mmproj.path}");
+
+    // Initialize backend list before opening model
+    List<String> backendList = AiliaLLMModel.getBackendList();
+    print("Available backends: $backendList");
+
+    if (backendList.isEmpty) {
+      throw Exception("No backends available for ailia LLM");
+    }
+
+    // Use the first available backend
+    String backend = backendList[0];
+    print("Using backend: $backend");
+
+    // Open the base text model
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+    print("Loaded text model: ${model.path}");
+
+    // Open the multimodal projector
+    _ailiaLLMModel.openMultimodalProjectorFile(mmproj.path);
+    print("Loaded multimodal projector: ${mmproj.path}");
+
+    // Get and display multimodal capabilities
+    Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
+    print("Multimodal capabilities: Vision=${capabilities['vision']}, Audio=${capabilities['audio']}");
   }
 
   void setSystemPrompt(String prompt){
@@ -55,23 +67,39 @@ class MultimodalLargeLanguageModel {
       _addSystemPrompt();
     }
 
-    // For the demo, we'll create a prompt that includes image description
-    // In a real implementation, this would use ailiaLLMSetMultimodalPrompt
-    String multimodalPrompt = "$inputText\n\n[Image: $imagePath]\nNote: This is a demo implementation. In the full version, the image would be processed by the multimodal model.";
-    
-    messages.add({"role": "user", "content": multimodalPrompt});
-    
-    _ailiaLLMModel.setPrompt(messages);
+    // Create multimodal message with image
+    String multimodalContent = "$inputText <__media__>";
+    Map<String, dynamic> userMessage = {
+      "role": "user",
+      "content": multimodalContent,
+      "media_data": [
+        {
+          "media_type": "image",
+          "file_path": imagePath,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    };
+
+    messages.add(userMessage);
+
+    print("Setting multimodal prompt with image: $imagePath");
+    _ailiaLLMModel.setMultimodalPrompt(messages);
+
     String text = "";
+    print("Generating multimodal response...");
     while(true){
       String? deltaText = _ailiaLLMModel.generate();
       if (deltaText == null){
         break;
       }
       text = text + deltaText;
+      print("Generated token: $deltaText"); // Debug output
     }
 
     messages.add({"role": "assistant", "content": text});
+    print("Final response: $text");
     return text;
   }
 

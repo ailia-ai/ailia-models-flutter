@@ -19,7 +19,20 @@ class LargeLanguageModel {
 
   void open(File model){
     int nCtx = 8192; // 0 for modelDefault
-    _ailiaLLMModel.open(model.path, nCtx);
+
+    // Initialize backend list before opening model
+    List<String> backendList = AiliaLLMModel.getBackendList();
+    print("Available backends: $backendList");
+
+    if (backendList.isEmpty) {
+      throw Exception("No backends available for ailia LLM");
+    }
+
+    // Use the first available backend
+    String backend = backendList[0];
+    print("Using backend: $backend");
+
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
   }
 
   void setSystemPrompt(String prompt){

@@ -620,6 +620,7 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
   }
 
   void _ailiaLargeLanguageModelGemma3Multimodal() async {
+    print("Starting Gemma3 Multimodal...");
     MultimodalLargeLanguageModel multimodalLLM = MultimodalLargeLanguageModel();
     List<String> modelList = multimodalLLM.getModelList();
     _displayDownloadBegin();
@@ -628,45 +629,55 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
       setState(() {
         predict_result = "Downloading sample image...";
       });
-      
+      print("Downloading sample image...");
+
       try {
         File imageFile = await MultimodalLargeLanguageModel.downloadFile(
-          "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg", 
+          "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg",
           await getModelPath("sample_image.jpg")
         );
-        
+        print("Image downloaded: ${imageFile.path}");
+
         // Load the downloaded image for display
         Uint8List imageBytes = await File(imageFile.path).readAsBytes();
         image = await decodeImageFromList(imageBytes);
-        
+
         setState(() {
           isImageloaded = true;
           predict_result = "Image loaded. Processing...";
         });
-        
+        print("Image loaded for display");
+
         await _displayDownloadEnd();
-        
+
         File modelFile = File(await getModelPath("gemma-3-4b-it-Q4_K_M.gguf"));
         File mmprojFile = File(await getModelPath("gemma-3-4b-it-GGUF_mmproj-model-f16.gguf"));
-        
+        print("Model paths: ${modelFile.path}, ${mmprojFile.path}");
+
         String inputText = "この画像に何が見えますか？詳しく説明してください。";
         String imagePath = imageFile.path;
-        
+
         int startTime = DateTime.now().millisecondsSinceEpoch;
-        
+
+        print("Opening multimodal model...");
         multimodalLLM.open(modelFile, mmprojFile);
+        print("Setting system prompt...");
         multimodalLLM.setSystemPrompt("あなたは画像を詳しく分析し、日本語で説明するAIアシスタントです。");
+        print("Chatting with image...");
         String outputText = multimodalLLM.chatWithImage(inputText, imagePath);
-        
+
         int endTime = DateTime.now().millisecondsSinceEpoch;
         String profileText = "processing time : ${(endTime - startTime) / 1000} sec";
-        
+
         setState(() {
           predict_result = "${inputText}\n\n${outputText}\n\n${profileText}";
         });
-        
+        print("Processing complete: $outputText");
+
         multimodalLLM.close();
-      } catch (e) {
+      } catch (e, stackTrace) {
+        print("Error occurred: $e");
+        print("Stack trace: $stackTrace");
         setState(() {
           predict_result = "Error: $e\n\nNote: This is a demo implementation. Full multimodal support requires additional native bindings.";
         });
