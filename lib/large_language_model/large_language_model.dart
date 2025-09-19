@@ -33,6 +33,34 @@ class LargeLanguageModel {
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
   }
 
+  void openWithBackend(File model, String selectedBackend){
+    int nCtx = 8192; // 0 for modelDefault
+
+    // Initialize backend list before opening model
+    List<String> backendList = AiliaLLMModel.getBackendList();
+
+    if (backendList.isEmpty) {
+      throw Exception("No backends available for ailia LLM");
+    }
+
+    // Map environment names to backend names
+    String backend;
+    if (selectedBackend.contains("Vulkan") || selectedBackend.contains("GPU")) {
+      backend = "Vulkan";
+    } else if (selectedBackend.contains("Metal")) {
+      backend = "Metal";
+    } else {
+      backend = "CPU";
+    }
+
+    // Verify the selected backend is available
+    if (!backendList.contains(backend)) {
+      throw Exception("Selected backend '$backend' not available. Available: $backendList");
+    }
+
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+  }
+
   void setSystemPrompt(String prompt){
     systemPrompt = prompt;
     _addSystemPrompt();

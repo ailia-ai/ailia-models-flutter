@@ -608,15 +608,48 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
     List<String> modelList = llm.getModelList();
     _displayDownloadBegin();
     downloadModelFromModelList(0, modelList, () async {
+      await _displayDownloadEnd();
+
+      setState(() {
+        predict_result = "Model downloaded. Ready for inference.";
+      });
+
+      // Now perform inference with selected backend
+      await _performGemma2Inference(llm);
+    });
+  }
+
+  Future<void> _performGemma2Inference(LargeLanguageModel llm) async {
+    try {
+      setState(() {
+        predict_result = "Loading model with selected backend...";
+      });
+
       File modelFile = File(await getModelPath("gemma-2-2b-it-Q4_K_M.gguf"));
       String inputText = "こんにちは。";
-      llm.open(modelFile);
+
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+
+      // Get selected backend from environment dropdown
+      String selectedBackend = envList.firstWhere((env) => env.id == selectedEnvId).name;
+
+      llm.openWithBackend(modelFile, selectedBackend);
       llm.setSystemPrompt("語尾に「わん」をつけてください。");
       String outputText = llm.chat(inputText);
+
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+      String profileText = "processing time : ${(endTime - startTime) / 1000} sec";
+
       setState(() {
-        predict_result = "${inputText} -> ${outputText}";
+        predict_result = "${inputText} -> ${outputText}\n${profileText}";
       });
-    });
+
+      llm.close();
+    } catch (e) {
+      setState(() {
+        predict_result = "Inference Error: $e";
+      });
+    }
   }
 
   void _ailiaLargeLanguageModelGemma3Multimodal() async {
