@@ -47,6 +47,44 @@ class MultimodalLargeLanguageModel {
     }
   }
 
+  void openWithBackend(File model, File mmproj, String selectedBackend){
+    int nCtx = 8192; // Context size for multimodal model
+
+    // Initialize backend list before opening model
+    List<String> backendList = AiliaLLMModel.getBackendList();
+
+    if (backendList.isEmpty) {
+      throw Exception("No backends available for ailia LLM");
+    }
+
+    // Map environment names to backend names
+    String backend;
+    if (selectedBackend.contains("Vulkan") || selectedBackend.contains("GPU")) {
+      backend = "Vulkan";
+    } else if (selectedBackend.contains("Metal")) {
+      backend = "Metal";
+    } else {
+      backend = "CPU";
+    }
+
+    // Verify the selected backend is available
+    if (!backendList.contains(backend)) {
+      throw Exception("Selected backend '$backend' not available. Available: $backendList");
+    }
+
+    // Open the base text model with selected backend
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+
+    // Open the multimodal projector
+    _ailiaLLMModel.openMultimodalProjectorFile(mmproj.path);
+
+    // Get multimodal capabilities to verify setup
+    Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
+    if (!capabilities['vision']!) {
+      throw Exception("Vision capabilities not available");
+    }
+  }
+
   void setSystemPrompt(String prompt){
     systemPrompt = prompt;
     _addSystemPrompt();

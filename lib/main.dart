@@ -641,37 +641,55 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
 
         setState(() {
           isImageloaded = true;
-          predict_result = "Image loaded. Processing...";
+          predict_result = "Models downloaded. Ready for inference.";
         });
 
         await _displayDownloadEnd();
 
-        File modelFile = File(await getModelPath("gemma-3-4b-it-Q4_K_M.gguf"));
-        File mmprojFile = File(await getModelPath("gemma-3-4b-it-GGUF_mmproj-model-f16.gguf"));
+        // Now perform inference with selected backend
+        await _performGemma3MultimodalInference(multimodalLLM, imageFile.path);
 
-        String inputText = "この画像を簡潔に説明してください。";
-        String imagePath = imageFile.path;
-
-        int startTime = DateTime.now().millisecondsSinceEpoch;
-
-        multimodalLLM.open(modelFile, mmprojFile);
-        multimodalLLM.setSystemPrompt("画像を2-3文で簡潔に説明してください。");
-        String outputText = multimodalLLM.chatWithImage(inputText, imagePath);
-
-        int endTime = DateTime.now().millisecondsSinceEpoch;
-        String profileText = "processing time : ${(endTime - startTime) / 1000} sec";
-
-        setState(() {
-          predict_result = "${inputText} -> ${outputText}\n${profileText}";
-        });
-
-        multimodalLLM.close();
       } catch (e, stackTrace) {
         setState(() {
           predict_result = "Error: $e";
         });
       }
     });
+  }
+
+  Future<void> _performGemma3MultimodalInference(MultimodalLargeLanguageModel multimodalLLM, String imagePath) async {
+    try {
+      setState(() {
+        predict_result = "Loading model with selected backend...";
+      });
+
+      File modelFile = File(await getModelPath("gemma-3-4b-it-Q4_K_M.gguf"));
+      File mmprojFile = File(await getModelPath("gemma-3-4b-it-GGUF_mmproj-model-f16.gguf"));
+
+      String inputText = "この画像を簡潔に説明してください。";
+
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+
+      // Get selected backend from environment dropdown
+      String selectedBackend = envList.firstWhere((env) => env.id == selectedEnvId).name;
+
+      multimodalLLM.openWithBackend(modelFile, mmprojFile, selectedBackend);
+      multimodalLLM.setSystemPrompt("画像を2-3文で簡潔に説明してください。");
+      String outputText = multimodalLLM.chatWithImage(inputText, imagePath);
+
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+      String profileText = "processing time : ${(endTime - startTime) / 1000} sec";
+
+      setState(() {
+        predict_result = "${inputText} -> ${outputText}\n${profileText}";
+      });
+
+      multimodalLLM.close();
+    } catch (e) {
+      setState(() {
+        predict_result = "Inference Error: $e";
+      });
+    }
   }
 
   void _incrementCounter() async {
