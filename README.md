@@ -9,7 +9,7 @@ A model library for flutter.
 ## Install and Run
 
 ```
-git clone https://github.com/axinc-ai/ailia-models-flutter.git
+git clone https://github.com/ailia-ai/ailia-models-flutter.git
 flutter pub get
 flutter run
 ```
@@ -52,7 +52,7 @@ flutter run
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
-|[yolox](/lib/object_detection/) | [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) | Pytorch | 1.2.6 and later | [EN](https://medium.com/axinc-ai/yolox-object-detection-model-exceeding-yolov5-d6cea6d3c4bc) [JP](https://medium.com/axinc/yolox-yolov5%E3%82%92%E8%B6%85%E3%81%88%E3%82%8B%E7%89%A9%E4%BD%93%E6%A4%9C%E5%87%BA%E3%83%A2%E3%83%87%E3%83%AB-e9706e15fef2) |
+|[yolox](/lib/object_detection/) | [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) | Pytorch | 1.2.6 and later | [EN](https://medium.com/ailia-ai/yolox-object-detection-model-exceeding-yolov5-d6cea6d3c4bc) [JP](https://medium.com/axinc/yolox-yolov5%E3%82%92%E8%B6%85%E3%81%88%E3%82%8B%E7%89%A9%E4%BD%93%E6%A4%9C%E5%87%BA%E3%83%A2%E3%83%87%E3%83%AB-e9706e15fef2) |
 
 ### Text To Speech
 
@@ -70,32 +70,32 @@ When integrating the ailia SDK into a new application, add the following to pubs
 ```
   ailia:
     git:
-      url: https://github.com/axinc-ai/ailia-sdk-flutter.git
+      url: https://github.com/ailia-ai/ailia-sdk-flutter.git
       ref: main
 
   ailia_audio:
     git:
-      url: https://github.com/axinc-ai/ailia-audio-flutter.git
+      url: https://github.com/ailia-ai/ailia-audio-flutter.git
       ref: main
 
   ailia_tokenizer:
     git:
-      url: https://github.com/axinc-ai/ailia-tokenizer-flutter.git
+      url: https://github.com/ailia-ai/ailia-tokenizer-flutter.git
       ref: main
 
   ailia_speech:
     git:
-      url: https://github.com/axinc-ai/ailia-speech-flutter.git
+      url: https://github.com/ailia-ai/ailia-speech-flutter.git
       ref: main
 
   ailia_voice:
     git:
-      url: https://github.com/axinc-ai/ailia-voice-flutter.git
+      url: https://github.com/ailia-ai/ailia-voice-flutter.git
       ref: main
 
   ailia_llm:
     git:
-      url: https://github.com/axinc-ai/ailia-llm-flutter.git
+      url: https://github.com/ailia-ai/ailia-llm-flutter.git
       ref: main
 ```
 
