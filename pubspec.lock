@@ -7,7 +7,7 @@ packages:
       path: "."
       ref: main
       resolved-ref: "22e7d8956bc85ec85a42bdeddb3edd4a0aba03cc"
-      url: "https://github.com/axinc-ai/ailia-sdk-flutter.git"
+      url: "https://github.com/ailia-ai/ailia-sdk-flutter.git"
     source: git
     version: "1.4.2"
   ailia_audio:
@@ -16,7 +16,7 @@ packages:
       path: "."
       ref: main
       resolved-ref: "8477e6a4b81335bc416e8ea80659addc3a62f5ea"
-      url: "https://github.com/axinc-ai/ailia-audio-flutter.git"
+      url: "https://github.com/ailia-ai/ailia-audio-flutter.git"
     source: git
     version: "1.4.0"
   ailia_llm:
@@ -25,7 +25,7 @@ packages:
       path: "."
       ref: main
       resolved-ref: "459d676898eeca20ac194a9329f587ea2a19c90d"
-      url: "https://github.com/axinc-ai/ailia-llm-flutter.git"
+      url: "https://github.com/ailia-ai/ailia-llm-flutter.git"
     source: git
     version: "1.0.1"
   ailia_speech:
@@ -34,7 +34,7 @@ packages:
       path: "."
       ref: main
       resolved-ref: c14081b79c45a30556bc3dad5ac5c0da9f244179
-      url: "https://github.com/axinc-ai/ailia-speech-flutter.git"
+      url: "https://github.com/ailia-ai/ailia-speech-flutter.git"
     source: git
     version: "1.3.1"
   ailia_tokenizer:
@@ -43,7 +43,7 @@ packages:
       path: "."
       ref: main
       resolved-ref: b8fa8dc78a920fa5df93b7925d63c9ebbc00ff86
-      url: "https://github.com/axinc-ai/ailia-tokenizer-flutter.git"
+      url: "https://github.com/ailia-ai/ailia-tokenizer-flutter.git"
     source: git
     version: "1.4.0"
   ailia_voice:
@@ -52,7 +52,7 @@ packages:
       path: "."
       ref: main
       resolved-ref: "4f7f3866bccaccba45b81d3005795f078276a230"
-      url: "https://github.com/axinc-ai/ailia-voice-flutter.git"
+      url: "https://github.com/ailia-ai/ailia-voice-flutter.git"
     source: git
     version: "1.1.0"
   archive:

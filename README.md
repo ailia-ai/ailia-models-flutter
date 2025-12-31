@@ -9,7 +9,7 @@ A model library for flutter.
 ## Install and Run
 
 ```
-git clone https://github.com/axinc-ai/ailia-models-flutter.git
+git clone https://github.com/ailia-ai/ailia-models-flutter.git
 flutter pub get
 flutter run
 ```
@@ -70,32 +70,32 @@ When integrating the ailia SDK into a new application, add the following to pubs
 ```
   ailia:
     git:
-      url: https://github.com/axinc-ai/ailia-sdk-flutter.git
+      url: https://github.com/ailia-ai/ailia-sdk-flutter.git
       ref: main
 
   ailia_audio:
     git:
-      url: https://github.com/axinc-ai/ailia-audio-flutter.git
+      url: https://github.com/ailia-ai/ailia-audio-flutter.git
       ref: main
 
   ailia_tokenizer:
     git:
-      url: https://github.com/axinc-ai/ailia-tokenizer-flutter.git
+      url: https://github.com/ailia-ai/ailia-tokenizer-flutter.git
       ref: main
 
   ailia_speech:
     git:
-      url: https://github.com/axinc-ai/ailia-speech-flutter.git
+      url: https://github.com/ailia-ai/ailia-speech-flutter.git
       ref: main
 
   ailia_voice:
     git:
-      url: https://github.com/axinc-ai/ailia-voice-flutter.git
+      url: https://github.com/ailia-ai/ailia-voice-flutter.git
       ref: main
 
   ailia_llm:
     git:
-      url: https://github.com/axinc-ai/ailia-llm-flutter.git
+      url: https://github.com/ailia-ai/ailia-llm-flutter.git
       ref: main
 ```
 
