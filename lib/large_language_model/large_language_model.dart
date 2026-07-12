@@ -61,6 +61,19 @@ class LargeLanguageModel {
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
   }
 
+  /// Opens the model with an exact backend name taken from
+  /// AiliaLLMModel.getBackendList() (e.g. CPU / Vulkan / OpenCL / Metal).
+  void openWithBackendName(File model, String backend){
+    int nCtx = 8192; // 0 for modelDefault
+
+    List<String> backendList = AiliaLLMModel.getBackendList();
+    if (!backendList.contains(backend)) {
+      throw Exception("Backend '$backend' not available. Available: $backendList");
+    }
+
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+  }
+
   void setSystemPrompt(String prompt){
     systemPrompt = prompt;
     _addSystemPrompt();
