@@ -67,6 +67,11 @@ class _DemoScreenState extends State<DemoScreen> {
   Uint8List? _capturedBytes;
   String? _capturedPath;
 
+  // Microphone waveform state: peak amplitude (0..1) per ~10ms block,
+  // most recent block last.
+  static const int _waveformBlocks = 300;
+  final List<double> _waveform = [];
+
   // Realtime camera inference state
   bool _realtimeActive = false;
   List<AiliaDetectorObject> _rtBoxes = [];
@@ -166,6 +171,7 @@ class _DemoScreenState extends State<DemoScreen> {
         _rtBoxes = [];
         _rtOverlayImage = null;
         _rtLabel = '';
+        _waveform.clear();
       });
     }
   }
@@ -848,11 +854,25 @@ class _DemoScreenState extends State<DemoScreen> {
       result.add(c / 32738.0);
     }
 
+    int sampleRate = 44100;
+
+    // Append peak amplitude per ~10ms block for the waveform display.
+    final blockSize = sampleRate ~/ 100;
+    for (int i = 0; i + blockSize <= result.length; i += blockSize) {
+      double peak = 0;
+      for (int j = i; j < i + blockSize; j++) {
+        peak = math.max(peak, result[j].abs());
+      }
+      _waveform.add(peak);
+    }
+    if (_waveform.length > _waveformBlocks) {
+      _waveform.removeRange(0, _waveform.length - _waveformBlocks);
+    }
+
     setState(() {
       mic_volume = "mic volume : ${result.reduce(math.max)}";
     });
 
-    int sampleRate = 44100;
     whisper_streaming.send(result, sampleRate);
   }
 
@@ -1338,6 +1358,27 @@ class _DemoScreenState extends State<DemoScreen> {
     }
   }
 
+  Widget _buildWaveform() {
+    if (!_supportsMic || _inputSource != InputSource.mic) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: 480,
+      height: 100,
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: CustomPaint(
+        painter: WaveformPainter(
+          samples: _waveform,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
+  }
+
   Widget _buildInputSourceSelector() {
     if (_supportsCamera) {
       return SegmentedButton<InputSource>(
@@ -1498,6 +1539,7 @@ class _DemoScreenState extends State<DemoScreen> {
                 _buildInputSourceSelector(),
                 const SizedBox(height: 8),
                 _buildCameraPreview(),
+                _buildWaveform(),
                 _buildImage(context),
                 const SizedBox(height: 8),
                 Text(predict_result),
@@ -1520,6 +1562,53 @@ class _DemoScreenState extends State<DemoScreen> {
         label: Text(_realtimeActive ? 'Stop' : 'Run'),
       ),
     );
+  }
+}
+
+/// Scrolling microphone waveform: one vertical bar per amplitude block,
+/// newest samples on the right.
+class WaveformPainter extends CustomPainter {
+  WaveformPainter({
+    required this.samples,
+    required this.color,
+  });
+
+  final List<double> samples;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, ui.Size size) {
+    final centerY = size.height / 2;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = math.max(1, size.width / _DemoScreenState._waveformBlocks)
+      ..strokeCap = StrokeCap.round;
+
+    // Baseline
+    canvas.drawLine(
+      Offset(0, centerY),
+      Offset(size.width, centerY),
+      Paint()
+        ..color = color.withOpacity(0.3)
+        ..strokeWidth = 1,
+    );
+
+    final step = size.width / _DemoScreenState._waveformBlocks;
+    final offset = _DemoScreenState._waveformBlocks - samples.length;
+    for (int i = 0; i < samples.length; i++) {
+      final x = (offset + i + 0.5) * step;
+      final amp = samples[i].clamp(0.0, 1.0) * (size.height / 2 - 2);
+      canvas.drawLine(
+        Offset(x, centerY - math.max(amp, 0.5)),
+        Offset(x, centerY + math.max(amp, 0.5)),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(WaveformPainter oldDelegate) {
+    return true;
   }
 }
 
