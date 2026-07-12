@@ -105,6 +105,26 @@ class _DemoScreenState extends State<DemoScreen> {
   bool get _supportsMic => widget.model.input == ModelInputKind.audio;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.model.id == 'yolox') {
+      _loadSampleImage('assets/clock.jpg');
+    }
+  }
+
+  /// Shows the bundled sample image before the first run.
+  Future<void> _loadSampleImage(String asset) async {
+    final data = await rootBundle.load(asset);
+    final loaded = await decodeImageFromList(data.buffer.asUint8List());
+    if (mounted) {
+      setState(() {
+        image = loaded;
+        isImageloaded = true;
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _realtimeActive = false;
     _cameraController?.dispose();
@@ -173,6 +193,9 @@ class _DemoScreenState extends State<DemoScreen> {
         _rtLabel = '';
         _waveform.clear();
       });
+      if (source == InputSource.sample && widget.model.id == 'yolox') {
+        _loadSampleImage('assets/clock.jpg');
+      }
     }
   }
 
@@ -1025,6 +1048,8 @@ class _DemoScreenState extends State<DemoScreen> {
           .join("\n");
 
       setState(() {
+        _rtBoxes = res;
+        _rtCategories = yolox.category;
         predict_result = "$resultSubText\n$profileText";
       });
     }, _displayDownloadProgress);
@@ -1349,8 +1374,20 @@ class _DemoScreenState extends State<DemoScreen> {
       return SizedBox(
         width: width,
         height: height,
-        child: CustomPaint(
-          painter: ImageEditor(image: image!),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(
+              painter: ImageEditor(image: image!),
+            ),
+            if (_rtBoxes.isNotEmpty)
+              CustomPaint(
+                painter: CameraOverlayPainter(
+                  boxes: _rtBoxes,
+                  categories: _rtCategories,
+                ),
+              ),
+          ],
         ),
       );
     } else {
