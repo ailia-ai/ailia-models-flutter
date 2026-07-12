@@ -67,10 +67,12 @@ class _DemoScreenState extends State<DemoScreen> {
   Uint8List? _capturedBytes;
   String? _capturedPath;
 
-  // Microphone waveform state: peak amplitude (0..1) per ~10ms block,
-  // most recent block last.
+  // Waveform state shared by the microphone input and TTS playback:
+  // peak amplitude (0..1) per ~10ms block, most recent block last.
   static const int _waveformBlocks = 300;
   final List<double> _waveform = [];
+  Timer? _playbackTimer;
+  bool _showPlaybackWaveform = false;
 
   // Realtime camera inference state
   bool _realtimeActive = false;
@@ -136,10 +138,61 @@ class _DemoScreenState extends State<DemoScreen> {
   @override
   void dispose() {
     _realtimeActive = false;
+    _playbackTimer?.cancel();
     _cameraController?.dispose();
     _macCameraController?.destroy();
     listener?.cancel();
     super.dispose();
+  }
+
+  /// Streams the waveform of a synthesized wav file into the waveform
+  /// display, following the playback position in time.
+  Future<void> _startPlaybackWaveform(String wavPath) async {
+    final wav = await Wav.readFile(wavPath);
+    if (wav.channels.isEmpty) {
+      return;
+    }
+    final samples = wav.channels[0];
+    final blockSize = wav.samplesPerSecond ~/ 100; // ~10ms per block
+    final blocks = <double>[];
+    for (int i = 0; i + blockSize <= samples.length; i += blockSize) {
+      double peak = 0;
+      for (int j = i; j < i + blockSize; j++) {
+        peak = math.max(peak, samples[j].abs());
+      }
+      blocks.add(peak);
+    }
+    if (blocks.isEmpty || !mounted) {
+      return;
+    }
+
+    _playbackTimer?.cancel();
+    _waveform.clear();
+    setState(() {
+      _showPlaybackWaveform = true;
+    });
+
+    final startMs = DateTime.now().millisecondsSinceEpoch;
+    int nextBlock = 0;
+    _playbackTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final elapsedMs = DateTime.now().millisecondsSinceEpoch - startMs;
+      int target = math.min(elapsedMs ~/ 10, blocks.length);
+      if (target > nextBlock) {
+        _waveform.addAll(blocks.sublist(nextBlock, target));
+        if (_waveform.length > _waveformBlocks) {
+          _waveform.removeRange(0, _waveform.length - _waveformBlocks);
+        }
+        nextBlock = target;
+        setState(() {});
+      }
+      if (nextBlock >= blocks.length) {
+        timer.cancel();
+      }
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -154,6 +207,9 @@ class _DemoScreenState extends State<DemoScreen> {
         _capturedBytes = null;
         _capturedPath = null;
         isImageloaded = false;
+        _rtBoxes = [];
+        _rtOverlayImage = null;
+        _rtLabel = '';
       });
       if (_usesMacCamera) {
         // CameraMacOSView initializes the controller itself.
@@ -1157,6 +1213,7 @@ class _DemoScreenState extends State<DemoScreen> {
       setState(() {
         predict_result = profileText;
       });
+      _startPlaybackWaveform(outputPath);
     });
   }
 
@@ -1197,6 +1254,7 @@ class _DemoScreenState extends State<DemoScreen> {
       setState(() {
         predict_result = profileText;
       });
+      _startPlaybackWaveform(outputPath);
     });
   }
 
@@ -1239,6 +1297,7 @@ class _DemoScreenState extends State<DemoScreen> {
       setState(() {
         predict_result = profileText;
       });
+      _startPlaybackWaveform(outputPath);
     });
   }
 
@@ -1406,7 +1465,8 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   Widget _buildWaveform() {
-    if (!_supportsMic || _inputSource != InputSource.mic) {
+    final micActive = _supportsMic && _inputSource == InputSource.mic;
+    if (!micActive && !_showPlaybackWaveform) {
       return const SizedBox.shrink();
     }
     return Container(
