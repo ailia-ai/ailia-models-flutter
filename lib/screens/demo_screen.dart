@@ -85,6 +85,12 @@ class _DemoScreenState extends State<DemoScreen> {
         : 'Hello world.',
   );
 
+  // LLM chat state. The model stays open so the conversation continues.
+  LargeLanguageModel? _chatLlm;
+  bool _chatGenerating = false;
+  final List<Map<String, String>> _chatMessages = [];
+  final TextEditingController _chatTextController = TextEditingController();
+
   // Realtime camera inference state
   bool _realtimeActive = false;
   List<AiliaDetectorObject> _rtBoxes = [];
@@ -151,6 +157,8 @@ class _DemoScreenState extends State<DemoScreen> {
     _realtimeActive = false;
     _playbackTimer?.cancel();
     _ttsTextController.dispose();
+    _chatTextController.dispose();
+    _chatLlm?.close();
     _cameraController?.dispose();
     _macCameraController?.destroy();
     listener?.cancel();
@@ -767,7 +775,14 @@ class _DemoScreenState extends State<DemoScreen> {
           _ailiaTextToSpeechGPTSoVITS_EN();
           break;
         case "gemma2":
-          _ailiaLargeLanguageModelGemma2();
+        case "gemma4-e2b":
+          try {
+            await _ensureChatModel();
+          } catch (e) {
+            setState(() {
+              predict_result = "Error: $e";
+            });
+          }
           break;
         case "gemma3-multimodal":
           _ailiaLargeLanguageModelGemma3Multimodal();
@@ -1369,52 +1384,89 @@ class _DemoScreenState extends State<DemoScreen> {
     });
   }
 
-  void _ailiaLargeLanguageModelGemma2() async {
-    LargeLanguageModel llm = LargeLanguageModel();
-    List<String> modelList = llm.getModelList();
+  // ---------------------------------------------------------------------
+  // LLM chat
+  // ---------------------------------------------------------------------
+
+  bool get _isChatModel =>
+      widget.model.id == 'gemma2' || widget.model.id == 'gemma4-e2b';
+
+  /// Downloads and opens the chat model once; later calls are no-ops so
+  /// the conversation continues on the same context.
+  Future<void> _ensureChatModel() async {
+    if (_chatLlm != null) {
+      return;
+    }
+    await AiliaLicense.checkAndDownloadLicense();
+    final llm = LargeLanguageModel();
+    final modelList = llm.getModelList(widget.model.id);
+    final url =
+        "https://storage.googleapis.com/ailia-models/${modelList[0]}/${modelList[1]}";
     _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
+    final modelFile =
+        await downloadModel(url, modelList[1], null, _displayDownloadProgress);
+    await _displayDownloadEnd();
+    if (modelFile == null) {
+      throw Exception("Model download failed");
+    }
 
-      setState(() {
-        predict_result = "Model downloaded. Ready for inference.";
-      });
-
-      await _performGemma2Inference(llm);
+    setState(() {
+      predict_result = "Loading model with selected backend...";
+    });
+    // ailia LLM has its own backend list; use the LLM selection.
+    String selectedBackend = BackendState.instance.selectedLlmBackend.value;
+    llm.openWithBackendName(modelFile, selectedBackend);
+    llm.setSystemPrompt("あなたは親切なアシスタントです。");
+    _chatLlm = llm;
+    setState(() {
+      predict_result = "Model loaded. Enter a message to chat.";
     });
   }
 
-  Future<void> _performGemma2Inference(LargeLanguageModel llm) async {
+  Future<void> _sendChatMessage() async {
+    final text = _chatTextController.text.trim();
+    if (text.isEmpty || _chatGenerating) {
+      return;
+    }
+    setState(() {
+      _chatGenerating = true;
+      _chatTextController.clear();
+      _chatMessages.add({'role': 'user', 'content': text});
+    });
     try {
+      await _ensureChatModel();
       setState(() {
-        predict_result = "Loading model with selected backend...";
+        _chatMessages.add({'role': 'assistant', 'content': ''});
       });
-
-      File modelFile = File(await getModelPath("gemma-2-2b-it-Q4_K_M.gguf"));
-      String inputText = "こんにちは。";
-
       int startTime = DateTime.now().millisecondsSinceEpoch;
-
-      // ailia LLM has its own backend list; use the LLM selection.
-      String selectedBackend = BackendState.instance.selectedLlmBackend.value;
-
-      llm.openWithBackendName(modelFile, selectedBackend);
-      llm.setSystemPrompt("語尾に「わん」をつけてください。");
-      String outputText = llm.chat(inputText);
-
+      await _chatLlm!.chatStream(text, (delta) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _chatMessages.last['content'] =
+              (_chatMessages.last['content'] ?? '') + delta;
+        });
+      });
       int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
-
       setState(() {
-        predict_result = "$inputText -> $outputText\n$profileText";
+        predict_result =
+            "processing time : ${(endTime - startTime) / 1000} sec";
       });
-
-      llm.close();
     } catch (e) {
-      setState(() {
-        predict_result = "Inference Error: $e";
-      });
+      if (mounted) {
+        setState(() {
+          predict_result = "Inference Error: $e";
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _chatGenerating = false;
+        });
+      } else {
+        _chatGenerating = false;
+      }
     }
   }
 
@@ -1569,6 +1621,62 @@ class _DemoScreenState extends State<DemoScreen> {
         ),
         minLines: 1,
         maxLines: 3,
+      ),
+    );
+  }
+
+  Widget _buildChatUi() {
+    if (!_isChatModel) {
+      return const SizedBox.shrink();
+    }
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 480,
+      margin: const EdgeInsets.only(top: 8),
+      child: Column(
+        children: [
+          for (final message in _chatMessages)
+            Align(
+              alignment: message['role'] == 'user'
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                constraints: const BoxConstraints(maxWidth: 400),
+                decoration: BoxDecoration(
+                  color: message['role'] == 'user'
+                      ? scheme.primaryContainer
+                      : scheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: SelectableText(message['content'] ?? ''),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _chatTextController,
+                  decoration: const InputDecoration(
+                    labelText: 'Message',
+                    border: OutlineInputBorder(),
+                  ),
+                  minLines: 1,
+                  maxLines: 3,
+                  onSubmitted: (_) => _sendChatMessage(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                onPressed: _chatGenerating ? null : _sendChatMessage,
+                icon: const Icon(Icons.send),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1773,6 +1881,7 @@ class _DemoScreenState extends State<DemoScreen> {
                 _buildWaveform(),
                 _buildTtsTextField(),
                 _buildImage(context),
+                _buildChatUi(),
                 const SizedBox(height: 8),
                 Text(predict_result),
                 Text(mic_volume),

@@ -5,11 +5,16 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 class LargeLanguageModel {
   final AiliaLLMModel _ailiaLLMModel = AiliaLLMModel();
 
-  List<String> getModelList(){
+  List<String> getModelList([String type = 'gemma2']){
     List<String> modelList = List<String>.empty(growable: true);
 
-    modelList.add("gemma");
-    modelList.add("gemma-2-2b-it-Q4_K_M.gguf");
+    if (type == 'gemma4-e2b'){
+      modelList.add("gemma");
+      modelList.add("gemma-4-E2B-it-Q4_K_M.gguf");
+    } else {
+      modelList.add("gemma");
+      modelList.add("gemma-2-2b-it-Q4_K_M.gguf");
+    }
 
     return modelList;
   }
@@ -102,6 +107,34 @@ class LargeLanguageModel {
         break;
       }
       text = text + deltaText;
+    }
+
+    messages.add({"role": "assistant", "content": text});
+    return text;
+  }
+
+  /// Same as [chat] but reports each generated token through [onDelta]
+  /// and yields to the event loop so the UI can update while generating.
+  Future<String> chatStream(
+      String inputText, void Function(String delta) onDelta) async {
+    if (_ailiaLLMModel.contextFull()){
+      messages = List<Map<String, dynamic>>.empty(growable:true);
+      _addSystemPrompt();
+    }
+
+    messages.add({"role": "user", "content": inputText});
+
+    _ailiaLLMModel.setPrompt(messages);
+    String text = "";
+    while(true){
+      String? deltaText = _ailiaLLMModel.generate();
+      if (deltaText == null){
+        break;
+      }
+      text = text + deltaText;
+      onDelta(deltaText);
+      // Let the UI repaint between tokens.
+      await Future.delayed(Duration.zero);
     }
 
     messages.add({"role": "assistant", "content": text});
