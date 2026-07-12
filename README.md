@@ -2,6 +2,8 @@
 
 A model library for flutter.
 
+![ailia MODELS Flutter](docs/screenshot.png)
+
 ## Supported Devices
 
 - Windows(native)
