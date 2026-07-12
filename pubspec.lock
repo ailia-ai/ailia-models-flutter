@@ -23,9 +23,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: pre-release
-      resolved-ref: "4aafc0394684ab897dd457aefef2e09ae352f73a"
-      url: "https://github.com/axinc-ai/ailia-llm-flutter.git"
+      ref: main
+      resolved-ref: "008ebaa9b592a5f49c287010c9868218eab5b8b8"
+      url: "https://github.com/ailia-ai/ailia-llm-flutter.git"
     source: git
     version: "1.4.1"
   ailia_speech:
