@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:ailia/ailia_license.dart';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -66,9 +67,14 @@ class _DemoScreenState extends State<DemoScreen> {
 
   int get selectedEnvId => BackendState.instance.selectedEnvId.value;
 
+  // The camera plugin has no macOS/Linux implementation.
+  bool get _hasCameraPlugin =>
+      kIsWeb || Platform.isAndroid || Platform.isIOS || Platform.isWindows;
+
   bool get _supportsCamera =>
-      widget.model.input == ModelInputKind.image ||
-      widget.model.input == ModelInputKind.imageText;
+      _hasCameraPlugin &&
+      (widget.model.input == ModelInputKind.image ||
+          widget.model.input == ModelInputKind.imageText);
 
   bool get _supportsMic => widget.model.input == ModelInputKind.audio;
 
