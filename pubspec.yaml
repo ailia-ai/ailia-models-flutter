@@ -98,5 +98,6 @@ flutter:
   assets:
     - assets/truck.jpg
     - assets/clock.jpg
+    - assets/input_u2net.png
     - assets/demo.wav
     - assets/reference_audio_girl.wav

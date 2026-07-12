@@ -42,6 +42,12 @@ flutter run
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [sam2](/lib/image_segmentation/segment-anything-2) | [Segment Anything 2](https://github.com/facebookresearch/sam2) | Pytorch | 1.2.16 and later | |
 
+### Background Removal
+
+| | Model | Exported From | Supported Ailia Version | Blog |
+|:-----------|------------:|:------------:|:------------:|:------------:|
+| [u2net](/lib/background_removal/u2net) | [U-2-Net](https://github.com/NathanUA/U-2-Net) | Pytorch | 1.1 and later | |
+
 ### Large Language model
 
 | | Model | Exported From | Supported Ailia Version | Blog |

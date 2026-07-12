@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:ailia/ailia.dart';
 import 'package:ailia/ailia_model.dart';
+import 'package:ailia_models_flutter/background_removal/u2net/u2net.dart';
+import 'package:ailia_models_flutter/utils/image_util.dart';
 import 'package:flutter/material.dart';
 
 // assets
@@ -115,6 +117,9 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
     case "sam2":
       _ailiaImageSegmentationSam2();
       break;
+      case "u2net":
+        _ailiaBackgroundRemovalU2Net();
+        break;
     case "resnet18":
       _ailiaImageClassificationResNet18();
       break;
@@ -389,6 +394,62 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
     });
 
     segmentImage.close();
+  }
+
+  void _ailiaBackgroundRemovalU2Net() async {
+    // Load image
+    image = await loadImageFromAssets("assets/input_u2net.png");
+    if (image == null) {
+      return;
+    }
+
+    setState(() {
+      isImageloaded = true;
+    });
+
+    // Download onnx
+    _displayDownloadBegin();
+
+    const remotePath = 'https://storage.googleapis.com/ailia-models/u2net/';
+    const u2netModel = 'u2net.onnx';
+
+    final u2netModelFile = await downloadModel(
+        '$remotePath$u2netModel', u2netModel, null, _displayDownloadProgress);
+
+    _displayDownloadEnd();
+
+    if (u2netModelFile == null) {
+      return;
+    }
+
+    U2Net u2net = U2Net();
+    u2net.open(u2netModelFile.path, envId: selectedEnvId);
+
+    // Load image data
+    DateTime time = DateTime.now();
+    final inputImage = await uiImageToImage(image!);
+    await u2net.setImage(inputImage);
+    print('setImage: ${DateTime.now().difference(time).inMilliseconds}ms');
+    time = DateTime.now();
+
+    // Generate mask image
+    final maskImage = u2net.run();
+    print('predict: ${DateTime.now().difference(time).inMilliseconds}ms');
+    time = DateTime.now();
+
+    if (maskImage == null) {
+      u2net.close();
+      return;
+    }
+
+    final maskUiImage = await imageToUiImage(maskImage);
+    setState(() {
+      //predict_result = 'Saved to $filePath';
+      predict_result = 'Generated masks.';
+      image = maskUiImage;
+    });
+
+    u2net.close();
   }
 
   void _ailiaImageClassificationResNet18(){
@@ -756,14 +817,19 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
   
   @override
   Widget build(BuildContext context) {
-    bool isImage = isSelectedItem == 'sam2' || isSelectedItem == 'resnet18' || isSelectedItem == 'yolox' || isSelectedItem == 'gemma3-multimodal';
-    if (envList.length == 0){
+    bool isImage = isSelectedItem == 'sam2' ||
+        isSelectedItem == 'u2net' ||
+        isSelectedItem == 'resnet18' ||
+        isSelectedItem == 'yolox' ||
+        isSelectedItem == 'gemma3-multimodal';
+    if (envList.isEmpty) {
       envList = AiliaModel.getEnvironmentList();
     }
 
     List<String> modelList = [];
     modelList.add('resnet18');
     modelList.add('sam2');
+    modelList.add('u2net');
     modelList.add('whisper_tiny');
     modelList.add('whisper_small');
     modelList.add('whisper_medium');
