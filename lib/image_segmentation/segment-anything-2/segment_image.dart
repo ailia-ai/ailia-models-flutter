@@ -86,16 +86,20 @@ class SegmentImage {
 
     final mask = maskImage.data!.toUint8List();
     final pixels = srcImage.data!.toUint8List();
+    final srcChannels = srcImage.numChannels;
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
-        final index = (y * width + x) * 4;
+        final index = (y * width + x) * srcChannels;
         final maskValue = mask[(y * width + x) * maskImage.numChannels + maskImage.numChannels - 1] ~/ 5;
         pixels[index] = _clamp(pixels[index] + maskValue, 0, 255);
       }
     }
 
     final image = img.Image.fromBytes(
-        width: width, height: height, numChannels: 4, bytes: pixels.buffer);
+        width: width,
+        height: height,
+        numChannels: srcChannels,
+        bytes: pixels.buffer);
     return image;
   }
 

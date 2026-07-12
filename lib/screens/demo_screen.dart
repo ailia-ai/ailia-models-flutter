@@ -104,11 +104,20 @@ class _DemoScreenState extends State<DemoScreen> {
 
   bool get _supportsMic => widget.model.input == ModelInputKind.audio;
 
+  // Bundled sample image shown before the first run.
+  static const Map<String, String> _sampleAssets = {
+    'yolox': 'assets/clock.jpg',
+    'resnet18': 'assets/clock.jpg',
+    'u2net': 'assets/input_u2net.png',
+    'sam2': 'assets/truck.jpg',
+  };
+
   @override
   void initState() {
     super.initState();
-    if (widget.model.id == 'yolox') {
-      _loadSampleImage('assets/clock.jpg');
+    final asset = _sampleAssets[widget.model.id];
+    if (asset != null) {
+      _loadSampleImage(asset);
     }
   }
 
@@ -193,8 +202,9 @@ class _DemoScreenState extends State<DemoScreen> {
         _rtLabel = '';
         _waveform.clear();
       });
-      if (source == InputSource.sample && widget.model.id == 'yolox') {
-        _loadSampleImage('assets/clock.jpg');
+      final asset = _sampleAssets[widget.model.id];
+      if (source == InputSource.sample && asset != null) {
+        _loadSampleImage(asset);
       }
     }
   }

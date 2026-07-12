@@ -228,6 +228,7 @@ class Sam2ImagePredictor {
         3);
 
     List pixel = image.buffer.asUint8List().toList();
+    final numChannels = image.numChannels;
 
     List mean = [0.485, 0.456, 0.406];
     List std = [0.229, 0.224, 0.225];
@@ -237,8 +238,9 @@ class Sam2ImagePredictor {
         for (int rgb = 0; rgb < 3; rgb++) {
           inputTensor.data[
                   y * image.width + x + rgb * image.width * image.height] =
-              (pixel[(image.width * y + x) * 4 + rgb] / 255.0 - mean[rgb]) /
-                  std[rgb]; // XXX
+              (pixel[(image.width * y + x) * numChannels + rgb] / 255.0 -
+                      mean[rgb]) /
+                  std[rgb];
         }
       }
     }
