@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:ailia/ailia_license.dart';
+import 'package:ailia/ailia_model.dart' show AiliaDetectorObject;
 import 'package:camera/camera.dart';
 // AudioFormat collides with mic_stream's; we only use the photo API.
 import 'package:camera_macos/camera_macos.dart' hide AudioFormat;
@@ -66,6 +67,15 @@ class _DemoScreenState extends State<DemoScreen> {
   Uint8List? _capturedBytes;
   String? _capturedPath;
 
+  // Realtime camera inference state
+  bool _realtimeActive = false;
+  List<AiliaDetectorObject> _rtBoxes = [];
+  List<String> _rtCategories = const [];
+  ui.Image? _rtOverlayImage;
+  String _rtLabel = '';
+  double _cameraAspect = 4 / 3;
+  CameraImageData? _macLatestFrame;
+
   ui.Image? image;
   bool isImageloaded = false;
 
@@ -91,6 +101,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
   @override
   void dispose() {
+    _realtimeActive = false;
     _cameraController?.dispose();
     _macCameraController?.destroy();
     listener?.cancel();
@@ -129,6 +140,7 @@ class _DemoScreenState extends State<DemoScreen> {
           );
           await controller.initialize();
           _cameraController = controller;
+          _cameraAspect = controller.value.aspectRatio;
         }
       } catch (e) {
         _cameraController = null;
@@ -136,16 +148,21 @@ class _DemoScreenState extends State<DemoScreen> {
       }
       if (mounted) setState(() {});
     } else {
+      _realtimeActive = false;
       final controller = _cameraController;
       _cameraController = null;
       await controller?.dispose();
       final macController = _macCameraController;
       _macCameraController = null;
+      _macLatestFrame = null;
       await macController?.destroy();
       setState(() {
         _inputSource = source;
         _capturedBytes = null;
         _capturedPath = null;
+        _rtBoxes = [];
+        _rtOverlayImage = null;
+        _rtLabel = '';
       });
     }
   }
@@ -207,6 +224,315 @@ class _DemoScreenState extends State<DemoScreen> {
     }
     ByteData data = await rootBundle.load(defaultAsset);
     return data.buffer.asUint8List();
+  }
+
+  // ---------------------------------------------------------------------
+  // Realtime camera inference
+  // ---------------------------------------------------------------------
+
+  bool get _supportsRealtime =>
+      _inputSource == InputSource.camera &&
+      widget.model.input == ModelInputKind.image;
+
+  _CameraFrame _bgraToRgb(CameraImageData data) {
+    final out = Uint8List(data.width * data.height * 3);
+    int o = 0;
+    for (int y = 0; y < data.height; y++) {
+      int i = y * data.bytesPerRow;
+      for (int x = 0; x < data.width; x++) {
+        out[o++] = data.bytes[i + 2];
+        out[o++] = data.bytes[i + 1];
+        out[o++] = data.bytes[i];
+        i += 4;
+      }
+    }
+    return _CameraFrame(out, data.width, data.height);
+  }
+
+  /// Grabs the current camera frame as tightly packed RGB bytes.
+  Future<_CameraFrame?> _grabCameraFrame() async {
+    if (_usesMacCamera) {
+      final data = _macLatestFrame;
+      if (data == null) {
+        return null;
+      }
+      return _bgraToRgb(data);
+    }
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) {
+      return null;
+    }
+    final shot = await controller.takePicture();
+    final bytes = await shot.readAsBytes();
+    try {
+      // Avoid piling up capture files while looping.
+      await File(shot.path).delete();
+    } catch (_) {}
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      return null;
+    }
+    final rgbImage = decoded.convert(numChannels: 3);
+    return _CameraFrame(rgbImage.getBytes(order: img.ChannelOrder.rgb),
+        rgbImage.width, rgbImage.height);
+  }
+
+  img.Image _frameToImage(_CameraFrame frame) {
+    return img.Image.fromBytes(
+      width: frame.width,
+      height: frame.height,
+      bytes: frame.rgb.buffer,
+      numChannels: 3,
+    );
+  }
+
+  void _updateCameraAspect(int width, int height) {
+    final aspect = width / height;
+    if ((aspect - _cameraAspect).abs() > 0.01 && mounted) {
+      setState(() {
+        _cameraAspect = aspect;
+      });
+    }
+  }
+
+  Future<void> _toggleRealtime() async {
+    if (_realtimeActive) {
+      setState(() {
+        _realtimeActive = false;
+      });
+      return;
+    }
+    if (_usesMacCamera && _macCameraController == null) {
+      setState(() {
+        predict_result = _cameraError ?? 'Camera is not ready.';
+      });
+      return;
+    }
+    setState(() {
+      _realtimeActive = true;
+      _rtBoxes = [];
+      _rtOverlayImage = null;
+      _rtLabel = '';
+    });
+    try {
+      await AiliaLicense.checkAndDownloadLicense();
+      if (_usesMacCamera) {
+        _macLatestFrame = null;
+        await _macCameraController!.startImageStream((data) {
+          if (data != null) {
+            _macLatestFrame = data;
+            _updateCameraAspect(data.width, data.height);
+          }
+        });
+      }
+      switch (widget.model.id) {
+        case "yolox":
+          await _realtimeYoloX();
+          break;
+        case "resnet18":
+          await _realtimeResNet18();
+          break;
+        case "u2net":
+          await _realtimeU2Net();
+          break;
+        case "sam2":
+          await _realtimeSam2();
+          break;
+        default:
+          setState(() {
+            predict_result = 'Realtime mode is not supported for this model.';
+          });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          predict_result = "Error: $e";
+        });
+      }
+    } finally {
+      if (_usesMacCamera) {
+        try {
+          await _macCameraController?.stopImageStream();
+        } catch (_) {
+          // The controller may already be destroyed.
+        }
+      }
+      _realtimeActive = false;
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  /// Runs [onFrame] on every camera frame until realtime mode is stopped.
+  Future<void> _realtimeLoop(
+      Future<void> Function(_CameraFrame frame) onFrame) async {
+    while (_realtimeActive && mounted) {
+      final frame = await _grabCameraFrame();
+      if (frame == null) {
+        await Future.delayed(const Duration(milliseconds: 50));
+        continue;
+      }
+      await onFrame(frame);
+      // Let the UI breathe between inferences.
+      await Future.delayed(const Duration(milliseconds: 16));
+    }
+  }
+
+  Future<void> _realtimeYoloX() async {
+    _displayDownloadBegin();
+    final onnxFile = await downloadModel(
+        "https://storage.googleapis.com/ailia-models/yolox/yolox_s.opt.onnx",
+        "yolox_s.opt.onnx",
+        null,
+        _displayDownloadProgress);
+    await _displayDownloadEnd();
+    if (onnxFile == null) {
+      return;
+    }
+    final yolox = ObjectDetectionYoloX();
+    yolox.open(onnxFile, selectedEnvId);
+    try {
+      await _realtimeLoop((frame) async {
+        int startTime = DateTime.now().millisecondsSinceEpoch;
+        final res = yolox.run(frame.rgb, frame.width, frame.height);
+        int endTime = DateTime.now().millisecondsSinceEpoch;
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _rtBoxes = res;
+          _rtCategories = yolox.category;
+          predict_result =
+              "${res.length} objects / ${endTime - startTime} ms per frame";
+        });
+      });
+    } finally {
+      yolox.close();
+    }
+  }
+
+  Future<void> _realtimeResNet18() async {
+    _displayDownloadBegin();
+    final onnxFile = await downloadModel(
+        "https://storage.googleapis.com/ailia-models/resnet18/resnet18.onnx",
+        "resnet18.onnx",
+        null,
+        _displayDownloadProgress);
+    await _displayDownloadEnd();
+    if (onnxFile == null) {
+      return;
+    }
+    final classifier = ImageClassificationResNet18();
+    classifier.open(onnxFile, selectedEnvId);
+    try {
+      await _realtimeLoop((frame) async {
+        int startTime = DateTime.now().millisecondsSinceEpoch;
+        final label = classifier.run(_frameToImage(frame));
+        int endTime = DateTime.now().millisecondsSinceEpoch;
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _rtLabel = label;
+          predict_result = "${endTime - startTime} ms per frame";
+        });
+      });
+    } finally {
+      classifier.close();
+    }
+  }
+
+  Future<void> _realtimeU2Net() async {
+    _displayDownloadBegin();
+    final u2netModelFile = await downloadModel(
+        'https://storage.googleapis.com/ailia-models/u2net/u2net.onnx',
+        'u2net.onnx',
+        null,
+        _displayDownloadProgress);
+    await _displayDownloadEnd();
+    if (u2netModelFile == null) {
+      return;
+    }
+    final u2net = U2Net();
+    u2net.open(u2netModelFile.path, envId: selectedEnvId);
+    try {
+      await _realtimeLoop((frame) async {
+        int startTime = DateTime.now().millisecondsSinceEpoch;
+        await u2net.setImage(_frameToImage(frame));
+        final maskImage = u2net.run();
+        int endTime = DateTime.now().millisecondsSinceEpoch;
+        if (maskImage == null || !mounted) {
+          return;
+        }
+        final maskUiImage = await imageToUiImage(maskImage);
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _rtOverlayImage = maskUiImage;
+          predict_result = "${endTime - startTime} ms per frame";
+        });
+      });
+    } finally {
+      u2net.close();
+    }
+  }
+
+  Future<void> _realtimeSam2() async {
+    _displayDownloadBegin();
+    const remotePath =
+        'https://storage.googleapis.com/ailia-models/segment-anything-2/';
+    final imageEncoderModelFile = await downloadModel(
+        '${remotePath}image_encoder_hiera_t.onnx',
+        'image_encoder_hiera_t.onnx',
+        null,
+        _displayDownloadProgress);
+    final promptEncoderModelFile = await downloadModel(
+        '${remotePath}prompt_encoder_hiera_t.onnx',
+        'prompt_encoder_hiera_t.onnx',
+        null,
+        _displayDownloadProgress);
+    final maskEncoderModelFile = await downloadModel(
+        '${remotePath}mask_decoder_hiera_t.onnx',
+        'mask_decoder_hiera_t.onnx',
+        null,
+        _displayDownloadProgress);
+    await _displayDownloadEnd();
+    if (imageEncoderModelFile == null ||
+        promptEncoderModelFile == null ||
+        maskEncoderModelFile == null) {
+      return;
+    }
+    final segmentImage = SegmentImage();
+    segmentImage.open(imageEncoderModelFile.path, promptEncoderModelFile.path,
+        maskEncoderModelFile.path,
+        envId: selectedEnvId);
+    try {
+      await _realtimeLoop((frame) async {
+        int startTime = DateTime.now().millisecondsSinceEpoch;
+        final inputImage = _frameToImage(frame);
+        await segmentImage.setImage(inputImage);
+        final point = img.Point(frame.width ~/ 2, frame.height ~/ 2);
+        final maskImage = segmentImage.run([point]);
+        int endTime = DateTime.now().millisecondsSinceEpoch;
+        if (maskImage == null || !mounted) {
+          return;
+        }
+        final result =
+            await segmentImage.overlayMaskImage(inputImage, maskImage);
+        final maskUiImage = await segmentImage.imageToUiImage(result);
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _rtOverlayImage = maskUiImage;
+          predict_result = "${endTime - startTime} ms per frame";
+        });
+      });
+    } finally {
+      segmentImage.close();
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -1073,32 +1399,49 @@ class _DemoScreenState extends State<DemoScreen> {
             style: TextStyle(color: Theme.of(context).colorScheme.error)),
       );
     }
+    Widget preview;
     if (_usesMacCamera) {
-      return SizedBox(
-        height: 240,
-        child: CameraMacOSView(
-          cameraMode: CameraMacOSMode.photo,
-          pictureFormat: PictureFormat.jpg,
-          resolution: PictureResolution.medium,
-          enableAudio: false,
-          onCameraInizialized: (CameraMacOSController controller) {
-            setState(() {
-              _macCameraController = controller;
-            });
-          },
-        ),
+      preview = CameraMacOSView(
+        cameraMode: CameraMacOSMode.photo,
+        pictureFormat: PictureFormat.jpg,
+        resolution: PictureResolution.medium,
+        fit: BoxFit.fill,
+        enableAudio: false,
+        onCameraInizialized: (CameraMacOSController controller) {
+          setState(() {
+            _macCameraController = controller;
+          });
+        },
       );
-    }
-    final controller = _cameraController;
-    if (controller == null || !controller.value.isInitialized) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: CircularProgressIndicator(),
-      );
+    } else {
+      final controller = _cameraController;
+      if (controller == null || !controller.value.isInitialized) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(),
+        );
+      }
+      preview = CameraPreview(controller);
     }
     return SizedBox(
-      height: 240,
-      child: CameraPreview(controller),
+      height: 320,
+      child: AspectRatio(
+        aspectRatio: _cameraAspect,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            preview,
+            CustomPaint(
+              painter: CameraOverlayPainter(
+                boxes: _rtBoxes,
+                categories: _rtCategories,
+                overlayImage: _rtOverlayImage,
+                label: _rtLabel,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1141,13 +1484,113 @@ class _DemoScreenState extends State<DemoScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
+          if (_supportsRealtime) {
+            _toggleRealtime();
+            return;
+          }
           _runCounter++;
           _run();
         },
-        icon: const Icon(Icons.play_arrow),
-        label: const Text('Run'),
+        icon: Icon(_realtimeActive ? Icons.stop : Icons.play_arrow),
+        label: Text(_realtimeActive ? 'Stop' : 'Run'),
       ),
     );
+  }
+}
+
+/// One camera frame as tightly packed RGB bytes.
+class _CameraFrame {
+  _CameraFrame(this.rgb, this.width, this.height);
+
+  final Uint8List rgb;
+  final int width;
+  final int height;
+}
+
+/// Draws realtime inference results (bounding boxes, masks, labels)
+/// on top of the live camera preview.
+class CameraOverlayPainter extends CustomPainter {
+  CameraOverlayPainter({
+    required this.boxes,
+    required this.categories,
+    this.overlayImage,
+    this.label = '',
+  });
+
+  final List<AiliaDetectorObject> boxes;
+  final List<String> categories;
+  final ui.Image? overlayImage;
+  final String label;
+
+  static const List<Color> _palette = [
+    Colors.red,
+    Colors.lime,
+    Colors.blue,
+    Colors.yellow,
+    Colors.cyan,
+    Colors.orange,
+    Colors.purple,
+    Colors.pink,
+  ];
+
+  @override
+  void paint(Canvas canvas, ui.Size size) {
+    final overlay = overlayImage;
+    if (overlay != null) {
+      final src = Rect.fromLTWH(
+          0, 0, overlay.width.toDouble(), overlay.height.toDouble());
+      final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+      canvas.drawImageRect(
+          overlay, src, dst, Paint()..color = Colors.white.withOpacity(0.7));
+    }
+
+    for (final box in boxes) {
+      final color = _palette[box.category % _palette.length];
+      // Detector coordinates are normalized to 0..1.
+      final rect = Rect.fromLTWH(
+        box.x * size.width,
+        box.y * size.height,
+        box.w * size.width,
+        box.h * size.height,
+      );
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = color,
+      );
+      final name = box.category < categories.length
+          ? categories[box.category]
+          : '${box.category}';
+      _drawLabel(canvas, '$name ${(box.prob * 100).toStringAsFixed(0)}%',
+          rect.left, rect.top, color);
+    }
+
+    if (label.isNotEmpty) {
+      _drawLabel(canvas, label, 4, 4, Colors.black54);
+    }
+  }
+
+  void _drawLabel(Canvas canvas, String text, double x, double y, Color bg) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final rect =
+        Rect.fromLTWH(x, y, painter.width + 8, painter.height + 4);
+    canvas.drawRect(rect, Paint()..color = bg.withOpacity(0.7));
+    painter.paint(canvas, Offset(x + 4, y + 2));
+  }
+
+  @override
+  bool shouldRepaint(CameraOverlayPainter oldDelegate) {
+    return oldDelegate.boxes != boxes ||
+        oldDelegate.overlayImage != overlayImage ||
+        oldDelegate.label != label;
   }
 }
 
