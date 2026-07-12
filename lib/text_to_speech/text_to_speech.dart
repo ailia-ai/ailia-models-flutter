@@ -198,16 +198,11 @@ class TextToSpeech {
         }
       }
 
-      // The reference feature must describe the reference audio in the
-      // phoneme encoding of the model's language.
-      String referenceFeature;
-      if (modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
-        referenceFeature = _ailiaVoiceModel.g2p("水必须从马来西亚购买。",
-            ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_ZH);
-      } else {
-        referenceFeature = _ailiaVoiceModel.g2p("水をマレーシアから買わなくてはならない。",
-            ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA);
-      }
+      // The reference feature stays Japanese regardless of the target
+      // language because the reference audio itself is Japanese speech.
+      String referenceFeature = _ailiaVoiceModel.g2p(
+          "水をマレーシアから買わなくてはならない。",
+          ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA);
       _ailiaVoiceModel.setReference(
           pcm, wav.samplesPerSecond, wav.channels.length, referenceFeature);
     }
