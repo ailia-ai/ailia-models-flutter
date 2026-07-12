@@ -33,27 +33,27 @@ dependencies:
 
   ailia:
     git:
-      url: https://github.com/axinc-ai/ailia-sdk-flutter.git
+      url: https://github.com/ailia-ai/ailia-sdk-flutter.git
       ref: main
 
   ailia_audio:
     git:
-      url: https://github.com/axinc-ai/ailia-audio-flutter.git
+      url: https://github.com/ailia-ai/ailia-audio-flutter.git
       ref: main
 
   ailia_tokenizer:
     git:
-      url: https://github.com/axinc-ai/ailia-tokenizer-flutter.git
+      url: https://github.com/ailia-ai/ailia-tokenizer-flutter.git
       ref: main
 
   ailia_speech:
     git:
-      url: https://github.com/axinc-ai/ailia-speech-flutter.git
+      url: https://github.com/ailia-ai/ailia-speech-flutter.git
       ref: main
 
   ailia_voice:
     git:
-      url: https://github.com/axinc-ai/ailia-voice-flutter.git
+      url: https://github.com/ailia-ai/ailia-voice-flutter.git
       ref: main
 
   ailia_llm:
