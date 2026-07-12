@@ -117,6 +117,9 @@ class _DemoScreenState extends State<DemoScreen> {
       setState(() {
         _inputSource = source;
         _cameraError = null;
+        _capturedBytes = null;
+        _capturedPath = null;
+        isImageloaded = false;
       });
       if (_usesMacCamera) {
         // CameraMacOSView initializes the controller itself.
@@ -1254,10 +1257,14 @@ class _DemoScreenState extends State<DemoScreen> {
         }
 
         Uint8List imageBytes = await File(imagePath).readAsBytes();
-        image = await decodeImageFromList(imageBytes);
+        if (_capturedPath == null) {
+          // The captured frame is already shown as the frozen camera
+          // preview; only show the sample image separately.
+          image = await decodeImageFromList(imageBytes);
+        }
 
         setState(() {
-          isImageloaded = true;
+          isImageloaded = _capturedPath == null;
           predict_result = "Models downloaded. Ready for inference.";
         });
 
@@ -1423,6 +1430,10 @@ class _DemoScreenState extends State<DemoScreen> {
       }
       preview = CameraPreview(controller);
     }
+    // After a still capture (e.g. gemma3 multimodal), freeze the visible
+    // preview on the captured frame while the camera keeps running
+    // underneath. Tap the frozen image to return to the live view.
+    final frozen = !_realtimeActive && _capturedBytes != null;
     return SizedBox(
       height: 320,
       child: AspectRatio(
@@ -1431,14 +1442,28 @@ class _DemoScreenState extends State<DemoScreen> {
           fit: StackFit.expand,
           children: [
             preview,
-            CustomPaint(
-              painter: CameraOverlayPainter(
-                boxes: _rtBoxes,
-                categories: _rtCategories,
-                overlayImage: _rtOverlayImage,
-                label: _rtLabel,
+            if (frozen)
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _capturedBytes = null;
+                    _capturedPath = null;
+                  });
+                },
+                child: Image.memory(
+                  _capturedBytes!,
+                  fit: BoxFit.contain,
+                ),
               ),
-            ),
+            if (!frozen)
+              CustomPaint(
+                painter: CameraOverlayPainter(
+                  boxes: _rtBoxes,
+                  categories: _rtCategories,
+                  overlayImage: _rtOverlayImage,
+                  label: _rtLabel,
+                ),
+              ),
           ],
         ),
       ),
