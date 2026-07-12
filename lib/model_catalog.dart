@@ -22,6 +22,7 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('whisper_small', 'Whisper Small', 'Audio Processing', ModelInputKind.audio),
   ModelInfo('whisper_medium', 'Whisper Medium', 'Audio Processing', ModelInputKind.audio),
   ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo', 'Audio Processing', ModelInputKind.audio),
+  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Audio Processing', ModelInputKind.audio),
   ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing', ModelInputKind.text),
   ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing', ModelInputKind.text),
   ModelInfo('fugumt-ja-en', 'FuguMT JA-EN', 'Natural Language Processing', ModelInputKind.text),

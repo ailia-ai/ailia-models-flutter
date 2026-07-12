@@ -19,7 +19,7 @@ class AudioProcessingWhisper {
     List<String> modelList = List<String>.empty(growable: true);
 
     modelList.add("silero-vad");
-    modelList.add("silero_vad.onnx");
+    modelList.add("silero_vad_v6_2.onnx");
 
     if (type == "whisper_tiny"){
       modelList.add("whisper");
@@ -46,6 +46,12 @@ class AudioProcessingWhisper {
       modelList.add("decoder_turbo_fix_kv_cache.onnx");
       modelList.add("whisper");
       modelList.add("encoder_turbo_weights.pb");
+    }
+    if (type == "sensevoice_small"){
+      modelList.add("sensevoice");
+      modelList.add("sensevoice_small.onnx");
+      modelList.add("sensevoice");
+      modelList.add("sensevoice_small.model");
     }
 
     return modelList;
@@ -120,6 +126,9 @@ class AudioProcessingWhisper {
     if (type == "whisper_large_v3_turbo"){
       // Please add com.apple.developer.kernel.increased-memory-limit for iOS
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_LARGE_V3;
+    }
+    if (type == "sensevoice_small"){
+      typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_SENSEVOICE_SMALL;
     }
     if (virtualMemory){
       Directory path = await getTemporaryDirectory();

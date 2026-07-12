@@ -274,6 +274,9 @@ class AudioProcessingWhisperStreaming {
       // Please add com.apple.developer.kernel.increased-memory-limit for iOS
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_LARGE_V3;
     }
+    if (type == "sensevoice_small"){
+      typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_SENSEVOICE_SMALL;
+    }
     if (virtualMemory){
       Directory path = await getTemporaryDirectory();
       AiliaModel.setTemporaryCachePath(path.path);

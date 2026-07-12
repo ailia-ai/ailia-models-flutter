@@ -684,7 +684,9 @@ class _DemoScreenState extends State<DemoScreen> {
   // ---------------------------------------------------------------------
 
   Future<void> _run() async {
-    if (_running && !widget.model.id.startsWith('whisper')) {
+    final isSpeechToText = widget.model.id.startsWith('whisper') ||
+        widget.model.id == 'sensevoice_small';
+    if (_running && !isSpeechToText) {
       return;
     }
     _running = true;
@@ -715,6 +717,7 @@ class _DemoScreenState extends State<DemoScreen> {
         case "whisper_small":
         case "whisper_medium":
         case "whisper_large_v3_turbo":
+        case "sensevoice_small":
           if (_inputSource == InputSource.mic) {
             _ailiaAudioProcessingWhisperStreaming(
                 widget.model.id, _virtualMemory);
