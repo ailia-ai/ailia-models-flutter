@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:ailia/ailia_license.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:ailia/ailia_model.dart' show AiliaDetectorObject;
 import 'package:camera/camera.dart';
 // AudioFormat collides with mic_stream's; we only use the photo API.
@@ -52,7 +53,6 @@ class DemoScreen extends StatefulWidget {
 
 class _DemoScreenState extends State<DemoScreen> {
   String predict_result = "";
-  String mic_volume = "";
   int _runCounter = 0;
   bool _running = false;
 
@@ -90,6 +90,20 @@ class _DemoScreenState extends State<DemoScreen> {
   bool _chatGenerating = false;
   final List<Map<String, String>> _chatMessages = [];
   final TextEditingController _chatTextController = TextEditingController();
+  String _systemPrompt = 'あなたは親切なアシスタントです。';
+
+  // Progress / error display, separated from the inference result text.
+  String _status = '';
+  double? _downloadProgress;
+  String? _errorText;
+
+  // Recording start time shown next to the mic waveform.
+  DateTime? _recStart;
+
+  // Last synthesized audio, replayable without re-synthesizing.
+  String? _lastTtsPath;
+
+  final ScrollController _scrollController = ScrollController();
 
   // Realtime camera inference state
   bool _realtimeActive = false;
@@ -159,6 +173,7 @@ class _DemoScreenState extends State<DemoScreen> {
     _ttsTextController.dispose();
     _chatTextController.dispose();
     _chatLlm?.close();
+    _scrollController.dispose();
     _cameraController?.dispose();
     _macCameraController?.destroy();
     listener?.cancel();
@@ -294,17 +309,13 @@ class _DemoScreenState extends State<DemoScreen> {
       if (_usesMacCamera) {
         final controller = _macCameraController;
         if (controller == null) {
-          setState(() {
-            predict_result = _cameraError ?? 'Camera is not ready.';
-          });
+          _showError(_cameraError ?? 'Camera is not ready.');
           return false;
         }
         final shot = await controller.takePicture();
         final bytes = shot?.bytes;
         if (bytes == null) {
-          setState(() {
-            predict_result = 'Failed to capture image.';
-          });
+          _showError('Failed to capture image.');
           return false;
         }
         _capturedBytes = bytes;
@@ -317,9 +328,7 @@ class _DemoScreenState extends State<DemoScreen> {
       }
       final controller = _cameraController;
       if (controller == null || !controller.value.isInitialized) {
-        setState(() {
-          predict_result = _cameraError ?? 'Camera is not ready.';
-        });
+        _showError(_cameraError ?? 'Camera is not ready.');
         return false;
       }
       final shot = await controller.takePicture();
@@ -422,9 +431,7 @@ class _DemoScreenState extends State<DemoScreen> {
       return;
     }
     if (_usesMacCamera && _macCameraController == null) {
-      setState(() {
-        predict_result = _cameraError ?? 'Camera is not ready.';
-      });
+      _showError(_cameraError ?? 'Camera is not ready.');
       return;
     }
     setState(() {
@@ -463,11 +470,7 @@ class _DemoScreenState extends State<DemoScreen> {
           });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          predict_result = "Error: $e";
-        });
-      }
+      _showError(e);
     } finally {
       if (_usesMacCamera) {
         try {
@@ -660,21 +663,41 @@ class _DemoScreenState extends State<DemoScreen> {
 
   void _displayDownloadBegin() {
     setState(() {
-      predict_result = "Downloading...";
+      _errorText = null;
+      _status = "Downloading...";
+      _downloadProgress = null;
     });
   }
 
-  void _displayDownloadProgress(progress) {
+  void _displayDownloadProgress(int downloaded, int total,
+      {String? filename}) {
     setState(() {
-      predict_result = "Downloading... ${progress ~/ 1024 ~/ 1024} MB";
+      _downloadProgress = total > 0 ? downloaded / total : null;
+      final name = filename == null ? "" : " $filename";
+      final mb = "${downloaded ~/ 1024 ~/ 1024} MB";
+      _status = total > 0
+          ? "Downloading$name ($mb / ${total ~/ 1024 ~/ 1024} MB)"
+          : "Downloading$name ($mb)";
     });
   }
 
   Future<void> _displayDownloadEnd() async {
     setState(() {
-      predict_result = "Download success.";
+      _status = "";
+      _downloadProgress = null;
     });
     await Future.delayed(const Duration(milliseconds: 100));
+  }
+
+  void _showError(Object error) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _errorText = "$error";
+      _status = "";
+      _downloadProgress = null;
+    });
   }
 
   void downloadModelFromModelList(
@@ -683,20 +706,24 @@ class _DemoScreenState extends State<DemoScreen> {
     String url =
         "https://storage.googleapis.com/ailia-models/${modelList[downloadCnt + 0]}/$filename";
     setState(() {
-      predict_result = "Downloading ${modelList[downloadCnt + 1]}";
+      _errorText = null;
+      _status = "Downloading ${modelList[downloadCnt + 1]}";
+      _downloadProgress = null;
     });
     downloadModel(url, modelList[downloadCnt + 1], (file) {
       downloadCnt = downloadCnt + 2;
       if (downloadCnt >= modelList.length) {
+        setState(() {
+          _status = "";
+          _downloadProgress = null;
+        });
         callback();
       } else {
         downloadModelFromModelList(downloadCnt, modelList, callback);
       }
-    }, (progress) {
-      setState(() {
-        predict_result =
-            "Downloading ${modelList[downloadCnt + 1]} ${progress ~/ 1024 ~/ 1024} MB";
-      });
+    }, (int downloaded, int total) {
+      _displayDownloadProgress(downloaded, total,
+          filename: modelList[downloadCnt + 1]);
     });
   }
 
@@ -718,6 +745,9 @@ class _DemoScreenState extends State<DemoScreen> {
       return;
     }
     _running = true;
+    setState(() {
+      _errorText = null;
+    });
     try {
       try {
         await AiliaLicense.checkAndDownloadLicense();
@@ -725,9 +755,7 @@ class _DemoScreenState extends State<DemoScreen> {
           return;
         }
       } catch (e) {
-        setState(() {
-          predict_result = "Error: $e";
-        });
+        _showError(e);
         return;
       }
 
@@ -779,9 +807,7 @@ class _DemoScreenState extends State<DemoScreen> {
           try {
             await _ensureChatModel();
           } catch (e) {
-            setState(() {
-              predict_result = "Error: $e";
-            });
+            _showError(e);
           }
           break;
         case "gemma3-multimodal":
@@ -969,6 +995,7 @@ class _DemoScreenState extends State<DemoScreen> {
         _transcript.add(_formatTranscriptLine(text[i]));
       }
     });
+    _scrollToBottom();
   }
 
   void _finishCallback() {
@@ -989,6 +1016,7 @@ class _DemoScreenState extends State<DemoScreen> {
     }
     listener!.cancel();
     listener = null;
+    _recStart = null;
     whisper_streaming.terminate();
     terminating = true;
     setState(() {
@@ -1025,9 +1053,7 @@ class _DemoScreenState extends State<DemoScreen> {
       _waveform.removeRange(0, _waveform.length - _waveformBlocks);
     }
 
-    setState(() {
-      mic_volume = "mic volume : ${result.reduce(math.max)}";
-    });
+    setState(() {}); // repaint waveform and REC time
 
     whisper_streaming.send(result, sampleRate);
   }
@@ -1057,6 +1083,7 @@ class _DemoScreenState extends State<DemoScreen> {
         predict_result =
             "processing time : ${(endTime - startTime) / 1000} sec for ${(wav.channels[0].length / wav.samplesPerSecond)} sec audio.";
       });
+      _scrollToBottom();
     });
   }
 
@@ -1119,12 +1146,11 @@ class _DemoScreenState extends State<DemoScreen> {
             channelConfig: ChannelConfig.CHANNEL_IN_MONO,
             audioFormat: AudioFormat.ENCODING_PCM_16BIT);
         listener = stream!.listen(_processSamples);
+        _recStart = DateTime.now();
         // Update the Run button into a Stop button.
         setState(() {});
       } catch (e) {
-        setState(() {
-          predict_result = "Microphone is not available: $e";
-        });
+        _showError("Microphone is not available: $e");
       }
     });
   }
@@ -1295,6 +1321,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
       setState(() {
         predict_result = profileText;
+        _lastTtsPath = outputPath;
       });
       _startPlaybackWaveform(outputPath);
     });
@@ -1336,6 +1363,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
       setState(() {
         predict_result = profileText;
+        _lastTtsPath = outputPath;
       });
       _startPlaybackWaveform(outputPath);
     });
@@ -1379,6 +1407,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
       setState(() {
         predict_result = profileText;
+        _lastTtsPath = outputPath;
       });
       _startPlaybackWaveform(outputPath);
     });
@@ -1411,16 +1440,61 @@ class _DemoScreenState extends State<DemoScreen> {
     }
 
     setState(() {
-      predict_result = "Loading model with selected backend...";
+      _status = "Loading model with selected backend...";
     });
     // ailia LLM has its own backend list; use the LLM selection.
     String selectedBackend = BackendState.instance.selectedLlmBackend.value;
     llm.openWithBackendName(modelFile, selectedBackend);
-    llm.setSystemPrompt("あなたは親切なアシスタントです。");
+    llm.setSystemPrompt(_systemPrompt);
     _chatLlm = llm;
     setState(() {
+      _status = "";
       predict_result = "Model loaded. Enter a message to chat.";
     });
+  }
+
+  void _clearChat() {
+    setState(() {
+      _chatMessages.clear();
+      predict_result = "";
+    });
+    _chatLlm?.resetHistory();
+  }
+
+  Future<void> _editSystemPrompt() async {
+    final controller = TextEditingController(text: _systemPrompt);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('System prompt'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 5,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || result.isEmpty || result == _systemPrompt) {
+      return;
+    }
+    setState(() {
+      _systemPrompt = result;
+      // Changing the prompt starts a fresh conversation.
+      _chatMessages.clear();
+    });
+    _chatLlm?.resetHistory(newSystemPrompt: result);
   }
 
   Future<void> _sendChatMessage() async {
@@ -1430,9 +1504,11 @@ class _DemoScreenState extends State<DemoScreen> {
     }
     setState(() {
       _chatGenerating = true;
+      _errorText = null;
       _chatTextController.clear();
       _chatMessages.add({'role': 'user', 'content': text});
     });
+    _scrollToBottom();
     try {
       await _ensureChatModel();
       setState(() {
@@ -1447,6 +1523,7 @@ class _DemoScreenState extends State<DemoScreen> {
           _chatMessages.last['content'] =
               (_chatMessages.last['content'] ?? '') + delta;
         });
+        _scrollToBottom();
       });
       int endTime = DateTime.now().millisecondsSinceEpoch;
       setState(() {
@@ -1454,11 +1531,7 @@ class _DemoScreenState extends State<DemoScreen> {
             "processing time : ${(endTime - startTime) / 1000} sec";
       });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          predict_result = "Inference Error: $e";
-        });
-      }
+      _showError("Inference Error: $e");
     } finally {
       if (mounted) {
         setState(() {
@@ -1506,9 +1579,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
         await _performGemma3MultimodalInference(multimodalLLM, imagePath);
       } catch (e) {
-        setState(() {
-          predict_result = "Error: $e";
-        });
+        _showError(e);
       }
     });
   }
@@ -1545,15 +1616,109 @@ class _DemoScreenState extends State<DemoScreen> {
 
       multimodalLLM.close();
     } catch (e) {
-      setState(() {
-        predict_result = "Inference Error: $e";
-      });
+      _showError("Inference Error: $e");
     }
   }
 
   // ---------------------------------------------------------------------
   // UI
   // ---------------------------------------------------------------------
+
+  /// Width-constrained container used by all demo panels so the layout
+  /// adapts to narrow windows.
+  Widget _panel({required Widget child, EdgeInsetsGeometry? margin}) {
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 480),
+      margin: margin ?? const EdgeInsets.only(top: 8),
+      child: child,
+    );
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
+  }
+
+  Widget _buildStatus() {
+    if (_status.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return _panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_status)),
+            ],
+          ),
+          if (_downloadProgress != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: LinearProgressIndicator(value: _downloadProgress),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    if (_errorText == null) {
+      return const SizedBox.shrink();
+    }
+    final scheme = Theme.of(context).colorScheme;
+    return _panel(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: scheme.errorContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.error_outline, color: scheme.error),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SelectableText(
+                _errorText!,
+                style: TextStyle(color: scheme.onErrorContainer),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResult() {
+    if (predict_result.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return _panel(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: SelectableText(predict_result),
+        ),
+      ),
+    );
+  }
 
   Widget _buildImage(BuildContext context) {
     if (isImageloaded && image != null) {
@@ -1589,19 +1754,45 @@ class _DemoScreenState extends State<DemoScreen> {
     if (!micActive && !_showPlaybackWaveform) {
       return const SizedBox.shrink();
     }
-    return Container(
-      width: 480,
-      height: 100,
-      margin: const EdgeInsets.only(top: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).colorScheme.outline),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: CustomPaint(
-        painter: WaveformPainter(
-          samples: _waveform,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+    String recTime = '';
+    if (_speechRecognitionActive && _recStart != null) {
+      final elapsed = DateTime.now().difference(_recStart!);
+      final minutes = (elapsed.inSeconds ~/ 60).toString().padLeft(2, '0');
+      final seconds = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+      recTime = "$minutes:$seconds";
+    }
+    return _panel(
+      child: Column(
+        children: [
+          if (_speechRecognitionActive)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.fiber_manual_record,
+                      color: Colors.red, size: 14),
+                  const SizedBox(width: 4),
+                  Text("REC $recTime"),
+                ],
+              ),
+            ),
+          Container(
+            width: double.infinity,
+            height: 100,
+            decoration: BoxDecoration(
+              border:
+                  Border.all(color: Theme.of(context).colorScheme.outline),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: CustomPaint(
+              painter: WaveformPainter(
+                samples: _waveform,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1610,19 +1801,39 @@ class _DemoScreenState extends State<DemoScreen> {
     if (widget.model.category != 'Text To Speech') {
       return const SizedBox.shrink();
     }
-    return Container(
-      width: 480,
-      margin: const EdgeInsets.only(top: 8),
-      child: TextField(
-        controller: _ttsTextController,
-        decoration: const InputDecoration(
-          labelText: 'Text to speak',
-          border: OutlineInputBorder(),
-        ),
-        minLines: 1,
-        maxLines: 3,
+    return _panel(
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _ttsTextController,
+              decoration: const InputDecoration(
+                labelText: 'Text to speak',
+                border: OutlineInputBorder(),
+              ),
+              minLines: 1,
+              maxLines: 3,
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+            tooltip: 'Replay last audio',
+            onPressed: _lastTtsPath == null ? null : _replayTts,
+            icon: const Icon(Icons.replay),
+          ),
+        ],
       ),
     );
+  }
+
+  Future<void> _replayTts() async {
+    final path = _lastTtsPath;
+    if (path == null) {
+      return;
+    }
+    final player = AudioPlayer();
+    await player.play(DeviceFileSource(path));
+    _startPlaybackWaveform(path);
   }
 
   Widget _buildChatUi() {
@@ -1630,11 +1841,25 @@ class _DemoScreenState extends State<DemoScreen> {
       return const SizedBox.shrink();
     }
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: 480,
-      margin: const EdgeInsets.only(top: 8),
+    return _panel(
       child: Column(
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                tooltip: 'Edit system prompt',
+                onPressed: _chatGenerating ? null : _editSystemPrompt,
+                icon: const Icon(Icons.tune, size: 20),
+              ),
+              IconButton(
+                tooltip: 'Clear conversation',
+                onPressed:
+                    _chatGenerating || _chatMessages.isEmpty ? null : _clearChat,
+                icon: const Icon(Icons.delete_sweep, size: 20),
+              ),
+            ],
+          ),
           for (final message in _chatMessages)
             Align(
               alignment: message['role'] == 'user'
@@ -1685,16 +1910,42 @@ class _DemoScreenState extends State<DemoScreen> {
     if (_transcript.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Container(
-      width: 480,
-      margin: const EdgeInsets.only(top: 8),
+    return _panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Text('Transcript',
+                  style: Theme.of(context).textTheme.labelLarge),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Copy transcript',
+                onPressed: () {
+                  Clipboard.setData(
+                      ClipboardData(text: _transcript.join('\n')));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Transcript copied to clipboard.')));
+                },
+                icon: const Icon(Icons.copy, size: 20),
+              ),
+              IconButton(
+                tooltip: 'Clear transcript',
+                onPressed: _speechRecognitionActive
+                    ? null
+                    : () {
+                        setState(() {
+                          _transcript.clear();
+                        });
+                      },
+                icon: const Icon(Icons.delete_sweep, size: 20),
+              ),
+            ],
+          ),
           for (final line in _transcript)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text(line),
+              child: SelectableText(line),
             ),
         ],
       ),
@@ -1814,8 +2065,8 @@ class _DemoScreenState extends State<DemoScreen> {
     // preview on the captured frame while the camera keeps running
     // underneath. Tap the frozen image to return to the live view.
     final frozen = !_realtimeActive && _capturedBytes != null;
-    return SizedBox(
-      height: 320,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 480),
       child: AspectRatio(
         aspectRatio: _cameraAspect,
         child: Stack(
@@ -1850,6 +2101,39 @@ class _DemoScreenState extends State<DemoScreen> {
     );
   }
 
+  Widget _buildRunButton() {
+    final stopMode = _realtimeActive || _speechRecognitionActive;
+    final busy = !stopMode && (_status.isNotEmpty || _chatGenerating);
+    return FloatingActionButton.extended(
+      onPressed: busy
+          ? null
+          : () {
+              if (_supportsRealtime) {
+                _toggleRealtime();
+                return;
+              }
+              if (_speechRecognitionActive) {
+                _stopSpeechRecognition();
+                return;
+              }
+              _runCounter++;
+              _run();
+            },
+      icon: busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(stopMode ? Icons.stop : Icons.play_arrow),
+      label: Text(stopMode
+          ? 'Stop'
+          : busy
+              ? 'Working...'
+              : 'Run'),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final model = widget.model;
@@ -1864,6 +2148,7 @@ class _DemoScreenState extends State<DemoScreen> {
         ],
       ),
       body: SingleChildScrollView(
+        controller: _scrollController,
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -1882,34 +2167,16 @@ class _DemoScreenState extends State<DemoScreen> {
                 _buildTtsTextField(),
                 _buildImage(context),
                 _buildChatUi(),
-                const SizedBox(height: 8),
-                Text(predict_result),
-                Text(mic_volume),
+                _buildStatus(),
+                _buildError(),
+                _buildResult(),
                 _buildTranscript(),
               ],
             ),
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          if (_supportsRealtime) {
-            _toggleRealtime();
-            return;
-          }
-          if (_speechRecognitionActive) {
-            _stopSpeechRecognition();
-            return;
-          }
-          _runCounter++;
-          _run();
-        },
-        icon: Icon(_realtimeActive || _speechRecognitionActive
-            ? Icons.stop
-            : Icons.play_arrow),
-        label: Text(
-            _realtimeActive || _speechRecognitionActive ? 'Stop' : 'Run'),
-      ),
+      floatingActionButton: _buildRunButton(),
     );
   }
 }

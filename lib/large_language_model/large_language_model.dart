@@ -84,6 +84,16 @@ class LargeLanguageModel {
     _addSystemPrompt();
   }
 
+  /// Clears the conversation history, optionally replacing the system
+  /// prompt, so a fresh conversation can start on the same model.
+  void resetHistory({String? newSystemPrompt}){
+    if (newSystemPrompt != null){
+      systemPrompt = newSystemPrompt;
+    }
+    messages = List<Map<String, dynamic>>.empty(growable:true);
+    _addSystemPrompt();
+  }
+
   void _addSystemPrompt(){
     if (systemPrompt == ""){
       return;

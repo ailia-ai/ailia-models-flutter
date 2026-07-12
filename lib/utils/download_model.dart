@@ -77,7 +77,7 @@ Future<File?> downloadModel(
           return;
         }
         downloaded += chunk.length;
-        progressCallback?.call(downloaded);
+        progressCallback?.call(downloaded, r.contentLength ?? 0);
       },
       onDone: () async {
         stopwatch.stop();
