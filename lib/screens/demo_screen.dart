@@ -74,6 +74,16 @@ class _DemoScreenState extends State<DemoScreen> {
   Timer? _playbackTimer;
   bool _showPlaybackWaveform = false;
 
+  // Meeting-minutes style transcript of speech recognition results.
+  final List<String> _transcript = [];
+
+  // Text spoken by the text-to-speech demos.
+  late final TextEditingController _ttsTextController = TextEditingController(
+    text: widget.model.id == 'gpt-sovits-ja'
+        ? 'こんにちは。今日はいい天気ですね。'
+        : 'Hello world.',
+  );
+
   // Realtime camera inference state
   bool _realtimeActive = false;
   List<AiliaDetectorObject> _rtBoxes = [];
@@ -139,6 +149,7 @@ class _DemoScreenState extends State<DemoScreen> {
   void dispose() {
     _realtimeActive = false;
     _playbackTimer?.cancel();
+    _ttsTextController.dispose();
     _cameraController?.dispose();
     _macCameraController?.destroy();
     listener?.cancel();
@@ -689,6 +700,13 @@ class _DemoScreenState extends State<DemoScreen> {
     if (_running && !isSpeechToText) {
       return;
     }
+    if (widget.model.category == 'Text To Speech' &&
+        _ttsTextController.text.trim().isEmpty) {
+      setState(() {
+        predict_result = 'Please enter text to speak.';
+      });
+      return;
+    }
     _running = true;
     try {
       try {
@@ -909,6 +927,18 @@ class _DemoScreenState extends State<DemoScreen> {
   StreamSubscription? listener;
   bool terminating = false;
 
+  String _formatTimeStamp(double sec) {
+    final total = sec.floor();
+    final minutes = (total ~/ 60).toString().padLeft(2, '0');
+    final seconds = (total % 60).toString().padLeft(2, '0');
+    return "$minutes:$seconds";
+  }
+
+  String _formatTranscriptLine(SpeechText text) {
+    return "[${_formatTimeStamp(text.timeStampBegin)} - "
+        "${_formatTimeStamp(text.timeStampEnd)}] ${text.text}";
+  }
+
   void _intermediateCallback(List<SpeechText> text) {
     setState(() {
       predict_result = "${text[0].text}...";
@@ -919,7 +949,7 @@ class _DemoScreenState extends State<DemoScreen> {
     setState(() {
       predict_result = "";
       for (int i = 0; i < text.length; i++) {
-        predict_result += text[i].text;
+        _transcript.add(_formatTranscriptLine(text[i]));
       }
     });
   }
@@ -973,16 +1003,25 @@ class _DemoScreenState extends State<DemoScreen> {
     final wav = await Wav.read(data.buffer.asUint8List());
     AudioProcessingWhisper whisper = AudioProcessingWhisper();
     List<String> modelList = whisper.getModelList(modelType);
+    setState(() {
+      _transcript.clear();
+    });
     _displayDownloadBegin();
     downloadModelFromModelList(0, modelList, () async {
       await _displayDownloadEnd();
       File vad_file = File(await getModelPath(modelList[1]));
       File onnx_encoder_file = File(await getModelPath(modelList[3]));
       File onnx_decoder_file = File(await getModelPath(modelList[5]));
-      String text = await whisper.transcribe(wav, onnx_encoder_file,
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      List<SpeechText> texts = await whisper.transcribe(wav, onnx_encoder_file,
           onnx_decoder_file, vad_file, selectedEnvId, modelType, virtualMemory);
+      int endTime = DateTime.now().millisecondsSinceEpoch;
       setState(() {
-        predict_result = text;
+        for (int i = 0; i < texts.length; i++) {
+          _transcript.add(_formatTranscriptLine(texts[i]));
+        }
+        predict_result =
+            "processing time : ${(endTime - startTime) / 1000} sec for ${(wav.channels[0].length / wav.samplesPerSecond)} sec audio.";
       });
     });
   }
@@ -1016,6 +1055,10 @@ class _DemoScreenState extends State<DemoScreen> {
         terminating = true;
         return;
       }
+
+      setState(() {
+        _transcript.clear();
+      });
 
       String lang = "ja";
       await whisper_streaming.open(
@@ -1194,7 +1237,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String? sslFile;
 
       String dicFolder = await getModelPath("open_jtalk_dic_utf_8-1.11/");
-      String targetText = "Hello world.";
+      String targetText = _ttsTextController.text.trim();
       String outputPath = await getModelPath("temp$_runCounter.wav");
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
@@ -1235,7 +1278,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String sslFile = await getModelPath("cnhubert.onnx");
 
       String dicFolder = await getModelPath("open_jtalk_dic_utf_8-1.11/");
-      String targetText = "Hello world.";
+      String targetText = _ttsTextController.text.trim();
       String outputPath = await getModelPath("temp$_runCounter.wav");
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
@@ -1278,7 +1321,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String dicFolderOpenJtalk =
           await getModelPath("open_jtalk_dic_utf_8-1.11/");
       String dicFolderEn = await getModelPath("/");
-      String targetText = "Hello world.";
+      String targetText = _ttsTextController.text.trim();
       String outputPath = await getModelPath("temp$_runCounter.wav");
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
@@ -1489,6 +1532,45 @@ class _DemoScreenState extends State<DemoScreen> {
     );
   }
 
+  Widget _buildTtsTextField() {
+    if (widget.model.category != 'Text To Speech') {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: 480,
+      margin: const EdgeInsets.only(top: 8),
+      child: TextField(
+        controller: _ttsTextController,
+        decoration: const InputDecoration(
+          labelText: 'Text to speak',
+          border: OutlineInputBorder(),
+        ),
+        minLines: 1,
+        maxLines: 3,
+      ),
+    );
+  }
+
+  Widget _buildTranscript() {
+    if (_transcript.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: 480,
+      margin: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final line in _transcript)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(line),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInputSourceSelector() {
     if (_supportsCamera) {
       return SegmentedButton<InputSource>(
@@ -1650,10 +1732,12 @@ class _DemoScreenState extends State<DemoScreen> {
                 const SizedBox(height: 8),
                 _buildCameraPreview(),
                 _buildWaveform(),
+                _buildTtsTextField(),
                 _buildImage(context),
                 const SizedBox(height: 8),
                 Text(predict_result),
                 Text(mic_volume),
+                _buildTranscript(),
               ],
             ),
           ),
