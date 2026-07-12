@@ -33,11 +33,18 @@ class TextToSpeech {
   static const int MODEL_TYPE_TACOTRON2 = 0;
   static const int MODEL_TYPE_GPT_SOVITS_JA = 1;
   static const int MODEL_TYPE_GPT_SOVITS_EN = 2;
+  static const int MODEL_TYPE_GPT_SOVITS_ZH = 3;
+
+  bool _isGPTSoVITS(int modelType) {
+    return modelType == MODEL_TYPE_GPT_SOVITS_JA ||
+        modelType == MODEL_TYPE_GPT_SOVITS_EN ||
+        modelType == MODEL_TYPE_GPT_SOVITS_ZH;
+  }
 
   List<String> getModelList(int modelType) {
     List<String> modelList = List<String>.empty(growable: true);
 
-    if (modelType == MODEL_TYPE_GPT_SOVITS_JA || modelType == MODEL_TYPE_GPT_SOVITS_EN){
+    if (_isGPTSoVITS(modelType)){
       modelList.add("open_jtalk/open_jtalk_dic_utf_8-1.11");
       modelList.add("open_jtalk_dic_utf_8-1.11/char.bin");
 
@@ -66,7 +73,8 @@ class TextToSpeech {
       modelList.add("open_jtalk_dic_utf_8-1.11/unk.dic");
     }
 
-    if (modelType == MODEL_TYPE_GPT_SOVITS_EN){
+    if (modelType == MODEL_TYPE_GPT_SOVITS_EN ||
+        modelType == MODEL_TYPE_GPT_SOVITS_ZH){
       modelList.add("g2p_en");
       modelList.add("averaged_perceptron_tagger_classes.txt");
 
@@ -89,6 +97,30 @@ class TextToSpeech {
       modelList.add("homographs.en");
     }
 
+    // Chinese G2P dictionary (GPT-SoVITS V1 ZH)
+    if (modelType == MODEL_TYPE_GPT_SOVITS_ZH){
+      modelList.add("g2p_cn");
+      modelList.add("pinyin.txt");
+
+      modelList.add("g2p_cn");
+      modelList.add("opencpop-strict.txt");
+
+      modelList.add("g2p_cn");
+      modelList.add("jieba.dict.utf8");
+
+      modelList.add("g2p_cn");
+      modelList.add("hmm_model.utf8");
+
+      modelList.add("g2p_cn");
+      modelList.add("user.dict.utf8");
+
+      modelList.add("g2p_cn");
+      modelList.add("idf.utf8");
+
+      modelList.add("g2p_cn");
+      modelList.add("stop_words.utf8");
+    }
+
     if (modelType == ailia_voice_dart.AILIA_VOICE_MODEL_TYPE_TACOTRON2) {
       modelList.add("tacotron2");
       modelList.add("encoder.onnx");
@@ -103,7 +135,7 @@ class TextToSpeech {
       modelList.add("waveglow.onnx");
     }
 
-    if (modelType == ailia_voice_dart.AILIA_VOICE_MODEL_TYPE_GPT_SOVITS) {
+    if (_isGPTSoVITS(modelType)) {
       modelList.add("gpt-sovits");
       modelList.add("t2s_encoder.onnx");
 
@@ -133,7 +165,8 @@ class TextToSpeech {
       String? sslFile,
       String? dicFolderOpenJtalk,
       String? dicFolderG2PEn,
-      int modelType) async {
+      int modelType,
+      {String? dicFolderG2PCn}) async {
     // Open and Inference
     _ailiaVoiceModel.openModel(
         encoderFile,
@@ -150,7 +183,10 @@ class TextToSpeech {
     if (dicFolderG2PEn != null){
       _ailiaVoiceModel.openDictionary(dicFolderG2PEn, ailia_voice_dart.AILIA_VOICE_DICTIONARY_TYPE_G2P_EN);
     }
-    if (modelType == MODEL_TYPE_GPT_SOVITS_JA || modelType == MODEL_TYPE_GPT_SOVITS_EN) {
+    if (dicFolderG2PCn != null){
+      _ailiaVoiceModel.openDictionary(dicFolderG2PCn, ailia_voice_dart.AILIA_VOICE_DICTIONARY_TYPE_G2P_CN);
+    }
+    if (_isGPTSoVITS(modelType)) {
       ByteData data = await rootBundle.load("assets/reference_audio_girl.wav");
       final wav = Wav.read(data.buffer.asUint8List());
 
@@ -162,8 +198,16 @@ class TextToSpeech {
         }
       }
 
-      String referenceFeature = _ailiaVoiceModel.g2p("水をマレーシアから買わなくてはならない。",
-          ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA);
+      // The reference feature must describe the reference audio in the
+      // phoneme encoding of the model's language.
+      String referenceFeature;
+      if (modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
+        referenceFeature = _ailiaVoiceModel.g2p("水必须从马来西亚购买。",
+            ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_ZH);
+      } else {
+        referenceFeature = _ailiaVoiceModel.g2p("水をマレーシアから買わなくてはならない。",
+            ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA);
+      }
       _ailiaVoiceModel.setReference(
           pcm, wav.samplesPerSecond, wav.channels.length, referenceFeature);
     }
@@ -177,6 +221,10 @@ class TextToSpeech {
     if (modelType == MODEL_TYPE_GPT_SOVITS_EN){
       targetFeature = _ailiaVoiceModel.g2p(targetText,
           ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_EN);
+    }
+    if (modelType == MODEL_TYPE_GPT_SOVITS_ZH){
+      targetFeature = _ailiaVoiceModel.g2p(targetText,
+          ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_ZH);
     }
     final audio = _ailiaVoiceModel.inference(targetFeature);
     _speaker.play(audio, outputPath);

@@ -29,6 +29,7 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('tacotron2', 'Tacotron2', 'Text To Speech', ModelInputKind.text),
   ModelInfo('gpt-sovits-ja', 'GPT-SoVITS JA', 'Text To Speech', ModelInputKind.text),
   ModelInfo('gpt-sovits-en', 'GPT-SoVITS EN', 'Text To Speech', ModelInputKind.text),
+  ModelInfo('gpt-sovits-zh', 'GPT-SoVITS ZH', 'Text To Speech', ModelInputKind.text),
   ModelInfo('gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
   ModelInfo('gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text),
   ModelInfo('gemma3-multimodal', 'Gemma 3 4B Multimodal', 'Large Language Model', ModelInputKind.imageText),

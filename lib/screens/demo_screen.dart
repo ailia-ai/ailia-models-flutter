@@ -80,9 +80,11 @@ class _DemoScreenState extends State<DemoScreen> {
 
   // Text spoken by the text-to-speech demos.
   late final TextEditingController _ttsTextController = TextEditingController(
-    text: widget.model.id == 'gpt-sovits-ja'
-        ? 'こんにちは。今日はいい天気ですね。'
-        : 'Hello world.',
+    text: switch (widget.model.id) {
+      'gpt-sovits-ja' => 'こんにちは。今日はいい天気ですね。',
+      'gpt-sovits-zh' => '你好世界。',
+      _ => 'Hello world.',
+    },
   );
 
   // LLM chat state. The model stays open so the conversation continues.
@@ -802,6 +804,9 @@ class _DemoScreenState extends State<DemoScreen> {
         case "gpt-sovits-en":
           _ailiaTextToSpeechGPTSoVITS_EN();
           break;
+        case "gpt-sovits-zh":
+          _ailiaTextToSpeechGPTSoVITS_ZH();
+          break;
         case "gemma2":
         case "gemma4-e2b":
           try {
@@ -1401,6 +1406,54 @@ class _DemoScreenState extends State<DemoScreen> {
           dicFolderOpenJtalk,
           dicFolderEn,
           TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN);
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+      String profileText =
+          "processing time : ${(endTime - startTime) / 1000} sec";
+
+      setState(() {
+        predict_result = profileText;
+        _lastTtsPath = outputPath;
+      });
+      _startPlaybackWaveform(outputPath);
+    });
+  }
+
+  void _ailiaTextToSpeechGPTSoVITS_ZH() {
+    TextToSpeech textToSpeech = TextToSpeech();
+    List<String> modelList =
+        textToSpeech.getModelList(TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH);
+    _displayDownloadBegin();
+    downloadModelFromModelList(0, modelList, () async {
+      await _displayDownloadEnd();
+
+      String encoderFile = await getModelPath("t2s_encoder.onnx");
+      String decoderFile = await getModelPath("t2s_fsdec.onnx");
+      String postnetFile = await getModelPath("t2s_sdec.opt.onnx");
+      String waveglowFile = await getModelPath("vits.onnx");
+      String sslFile = await getModelPath("cnhubert.onnx");
+
+      String dicFolderOpenJtalk =
+          await getModelPath("open_jtalk_dic_utf_8-1.11/");
+      // The English and Chinese G2P dictionary files are downloaded flat
+      // into the model root.
+      String dicFolderEn = await getModelPath("/");
+      String dicFolderCn = await getModelPath("/");
+      String targetText = _ttsTextController.text.trim();
+      String outputPath = await getModelPath("temp$_runCounter.wav");
+
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      await textToSpeech.inference(
+          targetText,
+          outputPath,
+          encoderFile,
+          decoderFile,
+          postnetFile,
+          waveglowFile,
+          sslFile,
+          dicFolderOpenJtalk,
+          dicFolderEn,
+          TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH,
+          dicFolderG2PCn: dicFolderCn);
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
