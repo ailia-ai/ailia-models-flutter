@@ -1,15 +1,19 @@
 import 'dart:io';
-
+import 'dart:typed_data';
 import 'package:ailia_llm/ailia_llm_model.dart';
+import 'package:http/http.dart' as http;
 
-class LargeLanguageModel {
+class MultimodalLargeLanguageModel {
   final AiliaLLMModel _ailiaLLMModel = AiliaLLMModel();
 
   List<String> getModelList(){
     List<String> modelList = List<String>.empty(growable: true);
-
+    
+    // Multimodal Gemma3 model
     modelList.add("gemma");
-    modelList.add("gemma-2-2b-it-Q4_K_M.gguf");
+    modelList.add("gemma-3-4b-it-Q4_K_M.gguf");
+    modelList.add("gemma");
+    modelList.add("gemma-3-4b-it-GGUF_mmproj-model-f16.gguf");
 
     return modelList;
   }
@@ -17,8 +21,8 @@ class LargeLanguageModel {
   List<Map<String, dynamic>> messages = List<Map<String, dynamic>>.empty(growable:true);
   String systemPrompt = "";
 
-  void open(File model){
-    int nCtx = 8192; // 0 for modelDefault
+  void open(File model, File mmproj){
+    int nCtx = 8192; // Context size for multimodal model
 
     // Initialize backend list before opening model
     List<String> backendList = AiliaLLMModel.getBackendList();
@@ -30,11 +34,21 @@ class LargeLanguageModel {
     // Use the first available backend
     String backend = backendList[0];
 
+    // Open the base text model
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+
+    // Open the multimodal projector
+    _ailiaLLMModel.openMultimodalProjectorFile(mmproj.path);
+
+    // Get multimodal capabilities to verify setup
+    Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
+    if (!capabilities['vision']!) {
+      throw Exception("Vision capabilities not available");
+    }
   }
 
-  void openWithBackend(File model, String selectedBackend){
-    int nCtx = 8192; // 0 for modelDefault
+  void openWithBackend(File model, File mmproj, String selectedBackend){
+    int nCtx = 8192; // Context size for multimodal model
 
     // Initialize backend list before opening model
     List<String> backendList = AiliaLLMModel.getBackendList();
@@ -58,7 +72,17 @@ class LargeLanguageModel {
       throw Exception("Selected backend '$backend' not available. Available: $backendList");
     }
 
+    // Open the base text model with selected backend
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+
+    // Open the multimodal projector
+    _ailiaLLMModel.openMultimodalProjectorFile(mmproj.path);
+
+    // Get multimodal capabilities to verify setup
+    Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
+    if (!capabilities['vision']!) {
+      throw Exception("Vision capabilities not available");
+    }
   }
 
   void setSystemPrompt(String prompt){
@@ -73,15 +97,31 @@ class LargeLanguageModel {
     messages.add({"role": "system", "content": systemPrompt});
   }
 
-  String chat(String inputText){
+  String chatWithImage(String inputText, String imagePath){
     if (_ailiaLLMModel.contextFull()){
       messages = List<Map<String, dynamic>>.empty(growable:true);
       _addSystemPrompt();
     }
 
-    messages.add({"role": "user", "content": inputText});
-    
-    _ailiaLLMModel.setPrompt(messages);
+    // Create multimodal message with image
+    String multimodalContent = "$inputText <__media__>";
+    Map<String, dynamic> userMessage = {
+      "role": "user",
+      "content": multimodalContent,
+      "media_data": [
+        {
+          "media_type": "image",
+          "file_path": imagePath,
+          "width": 0,
+          "height": 0
+        }
+      ]
+    };
+
+    messages.add(userMessage);
+
+    _ailiaLLMModel.setMultimodalPrompt(messages);
+
     String text = "";
     while(true){
       String? deltaText = _ailiaLLMModel.generate();
@@ -97,5 +137,13 @@ class LargeLanguageModel {
 
   void close(){
     _ailiaLLMModel.close();
+  }
+
+  // Helper method to download a file
+  static Future<File> downloadFile(String url, String filename) async {
+    final response = await http.get(Uri.parse(url));
+    final file = File(filename);
+    await file.writeAsBytes(response.bodyBytes);
+    return file;
   }
 }

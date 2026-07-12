@@ -2,9 +2,17 @@
 
 A model library for flutter.
 
+## Supported Devices
+
+- Windows(native)
+- macOS(native)
+- Android
+- iOS
+
 ## Requirements
 
 - flutter 3.19.6
+- Android SDK 2023.3.1 for android (recommended)
 
 ## Install and Run
 
@@ -39,6 +47,7 @@ flutter run
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [gemma2](/lib/large_language_model/) | [gemma-2-2b](https://huggingface.co/google/gemma-2-2b) | llama.cpp | | |
+| [gemma3-multimodal](/lib/large_language_model/) | [gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) | llama.cpp | 1.4.2 and later | |
 
 ### Natural Language Processing
 

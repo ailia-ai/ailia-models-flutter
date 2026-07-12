@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; //rootBundle
 import 'package:flutter/widgets.dart';
 import 'dart:async'; //Future
+import 'dart:typed_data'; //Uint8List
 import 'package:path_provider/path_provider.dart';
 import 'package:wav/wav.dart';
 import 'dart:io';
@@ -36,6 +37,7 @@ import 'natural_language_processing/fugumt.dart';
 import 'natural_language_processing/multilingual_e5.dart';
 import 'object_detection/yolox.dart';
 import 'large_language_model/large_language_model.dart';
+import 'large_language_model/multimodal_large_language_model.dart';
 
 void main() {
   runApp(const MyApp());
@@ -150,6 +152,9 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
       break;
     case "gemma2":
       _ailiaLargeLanguageModelGemma2();
+      break;
+    case "gemma3-multimodal":
+      _ailiaLargeLanguageModelGemma3Multimodal();
       break;
     default:
       throw(Exception("Unknown model type"));
@@ -603,15 +608,121 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
     List<String> modelList = llm.getModelList();
     _displayDownloadBegin();
     downloadModelFromModelList(0, modelList, () async {
+      await _displayDownloadEnd();
+
+      setState(() {
+        predict_result = "Model downloaded. Ready for inference.";
+      });
+
+      // Now perform inference with selected backend
+      await _performGemma2Inference(llm);
+    });
+  }
+
+  Future<void> _performGemma2Inference(LargeLanguageModel llm) async {
+    try {
+      setState(() {
+        predict_result = "Loading model with selected backend...";
+      });
+
       File modelFile = File(await getModelPath("gemma-2-2b-it-Q4_K_M.gguf"));
       String inputText = "こんにちは。";
-      llm.open(modelFile);
+
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+
+      // Get selected backend from environment dropdown
+      String selectedBackend = envList.firstWhere((env) => env.id == selectedEnvId).name;
+
+      llm.openWithBackend(modelFile, selectedBackend);
       llm.setSystemPrompt("語尾に「わん」をつけてください。");
       String outputText = llm.chat(inputText);
+
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+      String profileText = "processing time : ${(endTime - startTime) / 1000} sec";
+
       setState(() {
-        predict_result = "${inputText} -> ${outputText}";
+        predict_result = "${inputText} -> ${outputText}\n${profileText}";
       });
+
+      llm.close();
+    } catch (e) {
+      setState(() {
+        predict_result = "Inference Error: $e";
+      });
+    }
+  }
+
+  void _ailiaLargeLanguageModelGemma3Multimodal() async {
+    MultimodalLargeLanguageModel multimodalLLM = MultimodalLargeLanguageModel();
+    List<String> modelList = multimodalLLM.getModelList();
+    _displayDownloadBegin();
+    downloadModelFromModelList(0, modelList, () async {
+      // Download the sample image
+      setState(() {
+        predict_result = "Downloading sample image...";
+      });
+
+      try {
+        File imageFile = await MultimodalLargeLanguageModel.downloadFile(
+          "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg",
+          await getModelPath("sample_image.jpg")
+        );
+
+        // Load the downloaded image for display
+        Uint8List imageBytes = await File(imageFile.path).readAsBytes();
+        image = await decodeImageFromList(imageBytes);
+
+        setState(() {
+          isImageloaded = true;
+          predict_result = "Models downloaded. Ready for inference.";
+        });
+
+        await _displayDownloadEnd();
+
+        // Now perform inference with selected backend
+        await _performGemma3MultimodalInference(multimodalLLM, imageFile.path);
+
+      } catch (e, stackTrace) {
+        setState(() {
+          predict_result = "Error: $e";
+        });
+      }
     });
+  }
+
+  Future<void> _performGemma3MultimodalInference(MultimodalLargeLanguageModel multimodalLLM, String imagePath) async {
+    try {
+      setState(() {
+        predict_result = "Loading model with selected backend...";
+      });
+
+      File modelFile = File(await getModelPath("gemma-3-4b-it-Q4_K_M.gguf"));
+      File mmprojFile = File(await getModelPath("gemma-3-4b-it-GGUF_mmproj-model-f16.gguf"));
+
+      String inputText = "この画像を簡潔に説明してください。";
+
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+
+      // Get selected backend from environment dropdown
+      String selectedBackend = envList.firstWhere((env) => env.id == selectedEnvId).name;
+
+      multimodalLLM.openWithBackend(modelFile, mmprojFile, selectedBackend);
+      multimodalLLM.setSystemPrompt("画像を2-3文で簡潔に説明してください。");
+      String outputText = multimodalLLM.chatWithImage(inputText, imagePath);
+
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+      String profileText = "processing time : ${(endTime - startTime) / 1000} sec";
+
+      setState(() {
+        predict_result = "${inputText} -> ${outputText}\n${profileText}";
+      });
+
+      multimodalLLM.close();
+    } catch (e) {
+      setState(() {
+        predict_result = "Inference Error: $e";
+      });
+    }
   }
 
   void _incrementCounter() async {
@@ -645,7 +756,7 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
   
   @override
   Widget build(BuildContext context) {
-    bool isImage = isSelectedItem == 'sam2' || isSelectedItem == 'resnet18' || isSelectedItem == 'yolox';
+    bool isImage = isSelectedItem == 'sam2' || isSelectedItem == 'resnet18' || isSelectedItem == 'yolox' || isSelectedItem == 'gemma3-multimodal';
     if (envList.length == 0){
       envList = AiliaModel.getEnvironmentList();
     }
@@ -665,6 +776,7 @@ class _AiliaModelsFlutterState extends State<AiliaModelsFlutter> {
     modelList.add('gpt-sovits-ja');
     modelList.add('gpt-sovits-en');
     modelList.add('gemma2');
+    modelList.add('gemma3-multimodal');
 
     List<String> optionList = [];
     if (isSelectedItem!.startsWith("whisper")){
