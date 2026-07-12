@@ -6,6 +6,8 @@ import 'dart:ui' as ui;
 
 import 'package:ailia/ailia_license.dart';
 import 'package:camera/camera.dart';
+// AudioFormat collides with mic_stream's; we only use the photo API.
+import 'package:camera_macos/camera_macos.dart' hide AudioFormat;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -58,6 +60,8 @@ class _DemoScreenState extends State<DemoScreen> {
 
   // Camera state
   CameraController? _cameraController;
+  // macOS uses the camera_macos package; the view initializes the controller.
+  CameraMacOSController? _macCameraController;
   String? _cameraError;
   Uint8List? _capturedBytes;
   String? _capturedPath;
@@ -67,9 +71,16 @@ class _DemoScreenState extends State<DemoScreen> {
 
   int get selectedEnvId => BackendState.instance.selectedEnvId.value;
 
-  // The camera plugin has no macOS/Linux implementation.
+  // The camera plugin has no macOS/Linux implementation;
+  // macOS is covered by the camera_macos package instead.
   bool get _hasCameraPlugin =>
-      kIsWeb || Platform.isAndroid || Platform.isIOS || Platform.isWindows;
+      kIsWeb ||
+      Platform.isAndroid ||
+      Platform.isIOS ||
+      Platform.isWindows ||
+      Platform.isMacOS;
+
+  bool get _usesMacCamera => !kIsWeb && Platform.isMacOS;
 
   bool get _supportsCamera =>
       _hasCameraPlugin &&
@@ -81,6 +92,7 @@ class _DemoScreenState extends State<DemoScreen> {
   @override
   void dispose() {
     _cameraController?.dispose();
+    _macCameraController?.destroy();
     listener?.cancel();
     super.dispose();
   }
@@ -95,6 +107,10 @@ class _DemoScreenState extends State<DemoScreen> {
         _inputSource = source;
         _cameraError = null;
       });
+      if (_usesMacCamera) {
+        // CameraMacOSView initializes the controller itself.
+        return;
+      }
       try {
         if (_cameraController == null) {
           final cameras = await availableCameras();
@@ -123,6 +139,9 @@ class _DemoScreenState extends State<DemoScreen> {
       final controller = _cameraController;
       _cameraController = null;
       await controller?.dispose();
+      final macController = _macCameraController;
+      _macCameraController = null;
+      await macController?.destroy();
       setState(() {
         _inputSource = source;
         _capturedBytes = null;
@@ -136,6 +155,30 @@ class _DemoScreenState extends State<DemoScreen> {
     _capturedBytes = null;
     _capturedPath = null;
     if (_supportsCamera && _inputSource == InputSource.camera) {
+      if (_usesMacCamera) {
+        final controller = _macCameraController;
+        if (controller == null) {
+          setState(() {
+            predict_result = _cameraError ?? 'Camera is not ready.';
+          });
+          return false;
+        }
+        final shot = await controller.takePicture();
+        final bytes = shot?.bytes;
+        if (bytes == null) {
+          setState(() {
+            predict_result = 'Failed to capture image.';
+          });
+          return false;
+        }
+        _capturedBytes = bytes;
+        // Some demos (multimodal LLM) need a file path.
+        final file = File(
+            '${Directory.systemTemp.path}/ailia_camera_capture.jpg');
+        await file.writeAsBytes(bytes);
+        _capturedPath = file.path;
+        return true;
+      }
       final controller = _cameraController;
       if (controller == null || !controller.value.isInitialized) {
         setState(() {
@@ -1028,6 +1071,22 @@ class _DemoScreenState extends State<DemoScreen> {
         padding: const EdgeInsets.all(8),
         child: Text(_cameraError!,
             style: TextStyle(color: Theme.of(context).colorScheme.error)),
+      );
+    }
+    if (_usesMacCamera) {
+      return SizedBox(
+        height: 240,
+        child: CameraMacOSView(
+          cameraMode: CameraMacOSMode.photo,
+          pictureFormat: PictureFormat.jpg,
+          resolution: PictureResolution.medium,
+          enableAudio: false,
+          onCameraInizialized: (CameraMacOSController controller) {
+            setState(() {
+              _macCameraController = controller;
+            });
+          },
+        ),
       );
     }
     final controller = _cameraController;
