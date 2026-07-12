@@ -58,6 +58,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
   InputSource _inputSource = InputSource.sample;
   bool _virtualMemory = false;
+  bool _liveTranscribe = false;
 
   // Camera state
   CameraController? _cameraController;
@@ -253,6 +254,7 @@ class _DemoScreenState extends State<DemoScreen> {
       if (mounted) setState(() {});
     } else {
       _realtimeActive = false;
+      _stopSpeechRecognition();
       final controller = _cameraController;
       _cameraController = null;
       await controller?.dispose();
@@ -957,9 +959,26 @@ class _DemoScreenState extends State<DemoScreen> {
   void _finishCallback() {
     whisper_streaming.close();
     setState(() {
-      predict_result = "Terminate success. You can run new whisper instance.";
+      predict_result = "Stopped. The transcript is kept below.";
     });
     terminating = false;
+  }
+
+  /// Whether microphone speech recognition is currently running.
+  bool get _speechRecognitionActive => listener != null;
+
+  /// Stops the microphone streaming; the transcript stays on screen.
+  void _stopSpeechRecognition() {
+    if (listener == null || terminating) {
+      return;
+    }
+    listener!.cancel();
+    listener = null;
+    whisper_streaming.terminate();
+    terminating = true;
+    setState(() {
+      predict_result = "Please wait terminate.";
+    });
   }
 
   void _processSamples(samples) {
@@ -1069,6 +1088,7 @@ class _DemoScreenState extends State<DemoScreen> {
           modelType,
           lang,
           virtualMemory,
+          _liveTranscribe,
           _intermediateCallback,
           _messageCallback,
           _finishCallback);
@@ -1084,6 +1104,8 @@ class _DemoScreenState extends State<DemoScreen> {
             channelConfig: ChannelConfig.CHANNEL_IN_MONO,
             audioFormat: AudioFormat.ENCODING_PCM_16BIT);
         listener = stream!.listen(_processSamples);
+        // Update the Run button into a Stop button.
+        setState(() {});
       } catch (e) {
         setState(() {
           predict_result = "Microphone is not available: $e";
@@ -1622,6 +1644,23 @@ class _DemoScreenState extends State<DemoScreen> {
               },
             ),
           ),
+          if (_inputSource == InputSource.mic)
+            SizedBox(
+              width: 320,
+              child: SwitchListTile(
+                dense: true,
+                title: const Text('Live transcribe'),
+                value: _liveTranscribe,
+                // Applied when the next recognition starts.
+                onChanged: _speechRecognitionActive
+                    ? null
+                    : (v) {
+                        setState(() {
+                          _liveTranscribe = v;
+                        });
+                      },
+              ),
+            ),
         ],
       );
     }
@@ -1749,11 +1788,18 @@ class _DemoScreenState extends State<DemoScreen> {
             _toggleRealtime();
             return;
           }
+          if (_speechRecognitionActive) {
+            _stopSpeechRecognition();
+            return;
+          }
           _runCounter++;
           _run();
         },
-        icon: Icon(_realtimeActive ? Icons.stop : Icons.play_arrow),
-        label: Text(_realtimeActive ? 'Stop' : 'Run'),
+        icon: Icon(_realtimeActive || _speechRecognitionActive
+            ? Icons.stop
+            : Icons.play_arrow),
+        label: Text(
+            _realtimeActive || _speechRecognitionActive ? 'Stop' : 'Run'),
       ),
     );
   }

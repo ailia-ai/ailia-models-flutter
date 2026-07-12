@@ -258,7 +258,7 @@ class SpeechToTextIsolate {
 class AudioProcessingWhisperStreaming {
   final SpeechToTextIsolate _ailiaSpeechModel = SpeechToTextIsolate();
 
-  Future<void> open(File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, String lang, bool virtualMemory, Function intermediateCallback, Function messageCallback, Function finishCallback) async{
+  Future<void> open(File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, String lang, bool virtualMemory, bool liveTranscribe, Function intermediateCallback, Function messageCallback, Function finishCallback) async{
     int typeId = 0;
     if (type == "whisper_tiny"){
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_TINY;
@@ -281,7 +281,7 @@ class AudioProcessingWhisperStreaming {
       Directory path = await getTemporaryDirectory();
       AiliaModel.setTemporaryCachePath(path.path);
     }
-    _ailiaSpeechModel.init(intermediateCallback, messageCallback, finishCallback, onnx_encoder_file, onnx_decoder_file, vad_file, typeId, false, lang, true, env_id, virtualMemory);
+    _ailiaSpeechModel.init(intermediateCallback, messageCallback, finishCallback, onnx_encoder_file, onnx_decoder_file, vad_file, typeId, liveTranscribe, lang, true, env_id, virtualMemory);
   }
 
   void send(List<double> pcm, int samplesPerSecond){
