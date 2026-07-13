@@ -1056,11 +1056,13 @@ class _DemoScreenState extends State<DemoScreen> {
 
   void _processSamples(Uint8List samples) {
     // https://github.com/anarchuser/mic_stream/issues/94
-    final int16 =
-        samples.buffer.asInt16List(samples.offsetInBytes, samples.length ~/ 2);
-    final result = Float64List(int16.length);
-    for (var i = 0; i < int16.length; i++) {
-      result[i] = int16[i] / 32738.0;
+    // The chunk may be an unaligned view into a larger buffer, so read
+    // through ByteData instead of an Int16List view.
+    final byteData = ByteData.sublistView(samples);
+    final count = samples.length ~/ 2;
+    final result = Float64List(count);
+    for (var i = 0; i < count; i++) {
+      result[i] = byteData.getInt16(i * 2, Endian.little) / 32738.0;
     }
 
     _pushWaveform(_peakBlocks(result, _micSampleRate));
