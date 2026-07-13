@@ -46,6 +46,25 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _refreshDownloaded();
+    _openModelFromEnvironment();
+  }
+
+  /// Automation hook: AILIA_OPEN_MODEL=<model id> opens that demo
+  /// screen on startup (used together with AILIA_SCREENSHOT).
+  void _openModelFromEnvironment() {
+    final id = Platform.environment['AILIA_OPEN_MODEL'];
+    if (id == null || id.isEmpty) {
+      return;
+    }
+    final model = modelCatalog.where((m) => m.id == id).firstOrNull;
+    if (model == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => DemoScreen(model: model)),
+      );
+    });
   }
 
   Future<void> _refreshDownloaded() async {

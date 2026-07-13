@@ -80,6 +80,12 @@ class _DemoScreenState extends State<DemoScreen> {
   late final TextEditingController _ttsTextController =
       TextEditingController(text: widget.model.defaultTtsText ?? '');
 
+  // Query for the multimodal (image + text) LLM demo.
+  final TextEditingController _vlmQueryController =
+      TextEditingController(text: 'この画像を簡潔に説明してください。');
+
+  bool get _isVlmModel => widget.model.input == ModelInputKind.imageText;
+
   // LLM chat state. The model stays open so the conversation continues.
   LargeLanguageModel? _chatLlm;
   String? _chatBackend;
@@ -152,6 +158,25 @@ class _DemoScreenState extends State<DemoScreen> {
     if (asset != null) {
       _loadSampleImage(asset);
     }
+    if (_isVlmModel) {
+      _loadVlmSampleImage();
+    }
+  }
+
+  /// Shows the multimodal demo's sample image (downloaded, not bundled)
+  /// next to the query box before the first run.
+  Future<void> _loadVlmSampleImage() async {
+    try {
+      final imageFile = await MultimodalLargeLanguageModel.downloadFile(
+          "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg",
+          await getModelPath("sample_image.jpg"));
+      final loaded = await decodeImageFromList(await imageFile.readAsBytes());
+      _safeSetState(() {
+        image = loaded;
+      });
+    } catch (_) {
+      // The image appears after the model download instead.
+    }
   }
 
   /// Shows the bundled sample image before the first run.
@@ -168,6 +193,7 @@ class _DemoScreenState extends State<DemoScreen> {
     _realtimeActive = false;
     _playbackTimer?.cancel();
     _ttsTextController.dispose();
+    _vlmQueryController.dispose();
     _chatTextController.dispose();
     // While a reply is streaming, chatStream still holds the native
     // handle; _sendChatMessage closes it when the loop ends.
@@ -1534,7 +1560,7 @@ class _DemoScreenState extends State<DemoScreen> {
       File mmprojFile =
           File(await getModelPath("gemma-3-4b-it-GGUF_mmproj-model-f16.gguf"));
 
-      String inputText = "この画像を簡潔に説明してください。";
+      String inputText = _vlmQueryController.text.trim();
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
 
@@ -1792,6 +1818,23 @@ class _DemoScreenState extends State<DemoScreen> {
     final player = AudioPlayer();
     await player.play(DeviceFileSource(path));
     _startPlaybackWaveform(path);
+  }
+
+  Widget _buildVlmQueryField() {
+    if (!_isVlmModel) {
+      return const SizedBox.shrink();
+    }
+    return _panel(
+      child: TextField(
+        controller: _vlmQueryController,
+        decoration: const InputDecoration(
+          labelText: 'Query',
+          border: OutlineInputBorder(),
+        ),
+        minLines: 1,
+        maxLines: 3,
+      ),
+    );
   }
 
   Widget _buildChatUi() {
@@ -2066,35 +2109,45 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   Widget _buildRunButton() {
+    // Chat demos run through their own send button.
+    if (_isChatModel) {
+      return const SizedBox.shrink();
+    }
     final stopMode = _realtimeActive || _speechRecognitionActive;
     final busy = !stopMode && (_status.isNotEmpty || _chatGenerating);
-    return FloatingActionButton.extended(
-      onPressed: busy
-          ? null
-          : () {
-              if (_supportsRealtime) {
-                _toggleRealtime();
-                return;
-              }
-              if (_speechRecognitionActive) {
-                _stopSpeechRecognition();
-                return;
-              }
-              _runCounter++;
-              _run();
-            },
-      icon: busy
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(stopMode ? Icons.stop : Icons.play_arrow),
-      label: Text(stopMode
-          ? 'Stop'
-          : busy
-              ? 'Working...'
-              : 'Run'),
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: FilledButton.icon(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(160, 48),
+        ),
+        onPressed: busy
+            ? null
+            : () {
+                if (_supportsRealtime) {
+                  _toggleRealtime();
+                  return;
+                }
+                if (_speechRecognitionActive) {
+                  _stopSpeechRecognition();
+                  return;
+                }
+                _runCounter++;
+                _run();
+              },
+        icon: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(stopMode ? Icons.stop : Icons.play_arrow),
+        label: Text(stopMode
+            ? 'Stop'
+            : busy
+                ? 'Working...'
+                : 'Run'),
+      ),
     );
   }
 
@@ -2129,8 +2182,10 @@ class _DemoScreenState extends State<DemoScreen> {
                 _buildCameraPreview(),
                 _buildWaveform(),
                 _buildTtsTextField(),
+                _buildVlmQueryField(),
                 _buildImage(context),
                 _buildChatUi(),
+                _buildRunButton(),
                 _buildStatus(),
                 _buildError(),
                 _buildResult(),
@@ -2140,7 +2195,6 @@ class _DemoScreenState extends State<DemoScreen> {
           ),
         ),
       ),
-      floatingActionButton: _buildRunButton(),
     );
   }
 }
