@@ -13,8 +13,8 @@ A model library for flutter.
 
 ## Requirements
 
-- flutter 3.19.6
-- Android SDK 2023.3.1 for android (recommended)
+- flutter 3.44.6
+- Android SDK 2025.2.2
 
 ## Install and Run
 
