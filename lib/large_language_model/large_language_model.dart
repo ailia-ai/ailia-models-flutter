@@ -5,11 +5,16 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 class LargeLanguageModel {
   final AiliaLLMModel _ailiaLLMModel = AiliaLLMModel();
 
-  List<String> getModelList(){
+  List<String> getModelList([String type = 'gemma2']){
     List<String> modelList = List<String>.empty(growable: true);
 
-    modelList.add("gemma");
-    modelList.add("gemma-2-2b-it-Q4_K_M.gguf");
+    if (type == 'gemma4-e2b'){
+      modelList.add("gemma");
+      modelList.add("gemma-4-E2B-it-Q4_K_M.gguf");
+    } else {
+      modelList.add("gemma");
+      modelList.add("gemma-2-2b-it-Q4_K_M.gguf");
+    }
 
     return modelList;
   }
@@ -61,8 +66,31 @@ class LargeLanguageModel {
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
   }
 
+  /// Opens the model with an exact backend name taken from
+  /// AiliaLLMModel.getBackendList() (e.g. CPU / Vulkan / OpenCL / Metal).
+  void openWithBackendName(File model, String backend){
+    int nCtx = 8192; // 0 for modelDefault
+
+    List<String> backendList = AiliaLLMModel.getBackendList();
+    if (!backendList.contains(backend)) {
+      throw Exception("Backend '$backend' not available. Available: $backendList");
+    }
+
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+  }
+
   void setSystemPrompt(String prompt){
     systemPrompt = prompt;
+    _addSystemPrompt();
+  }
+
+  /// Clears the conversation history, optionally replacing the system
+  /// prompt, so a fresh conversation can start on the same model.
+  void resetHistory({String? newSystemPrompt}){
+    if (newSystemPrompt != null){
+      systemPrompt = newSystemPrompt;
+    }
+    messages = List<Map<String, dynamic>>.empty(growable:true);
     _addSystemPrompt();
   }
 
@@ -89,6 +117,37 @@ class LargeLanguageModel {
         break;
       }
       text = text + deltaText;
+    }
+
+    messages.add({"role": "assistant", "content": text});
+    return text;
+  }
+
+  /// Same as [chat] but reports each generated token through [onDelta]
+  /// and yields to the event loop so the UI can update while generating.
+  /// Generation stops early when [shouldContinue] returns false (e.g.
+  /// the screen owning the model has been disposed).
+  Future<String> chatStream(
+      String inputText, void Function(String delta) onDelta,
+      {bool Function()? shouldContinue}) async {
+    if (_ailiaLLMModel.contextFull()){
+      messages = List<Map<String, dynamic>>.empty(growable:true);
+      _addSystemPrompt();
+    }
+
+    messages.add({"role": "user", "content": inputText});
+
+    _ailiaLLMModel.setPrompt(messages);
+    String text = "";
+    while(shouldContinue == null || shouldContinue()){
+      String? deltaText = _ailiaLLMModel.generate();
+      if (deltaText == null){
+        break;
+      }
+      text = text + deltaText;
+      onDelta(deltaText);
+      // Let the UI repaint between tokens.
+      await Future.delayed(Duration.zero);
     }
 
     messages.add({"role": "assistant", "content": text});

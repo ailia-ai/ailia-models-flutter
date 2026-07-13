@@ -49,24 +49,33 @@ void speechToTextIsolateFunc(SendPort initialReplyTo) {
     }
 
     if (message["cmd"] == "terminate") {
-      ailiaSpeechToText.finalizeInputData();
-      while (!ailiaSpeechToText.isComplete() && interrupt == false) {
-        var result = ailiaSpeechToText.transcribe();
-        if (result.isNotEmpty) {
-          answerPort.send({
-            "intermediate": false,
-            "terminate": false,
-            "text": result,
-          });
+      // finalizeInputData closes the sink, so draining with transcribe
+      // always reaches the complete flag. The try/finally only protects
+      // against exceptions: the finish message must reach the UI or the
+      // screen stays on "terminating" forever.
+      try {
+        ailiaSpeechToText.finalizeInputData();
+        while (!ailiaSpeechToText.isComplete() && interrupt == false) {
+          var result = ailiaSpeechToText.transcribe();
+          if (result.isNotEmpty) {
+            answerPort.send({
+              "intermediate": false,
+              "terminate": false,
+              "text": result,
+            });
+          }
         }
+        ailiaSpeechToText.reset();
+        ailiaSpeechToText.close();
+      } catch (e) {
+        print("speech terminate error: $e");
+      } finally {
+        answerPort.send({
+          "intermediate": false,
+          "terminate": true,
+          "text": null,
+        });
       }
-      ailiaSpeechToText.reset();
-      ailiaSpeechToText.close();
-      answerPort.send({
-        "intermediate": false,
-        "terminate": true,
-        "text": null,
-      });
       return;
     }
 
@@ -87,23 +96,28 @@ void speechToTextIsolateFunc(SendPort initialReplyTo) {
         });
       }
 
-      ailiaSpeechToText.setIntermediateCallback(intermediateCallback);
+      try {
+        ailiaSpeechToText.setIntermediateCallback(intermediateCallback);
 
-      ailiaSpeechToText.pushInputData(
-        message["chunk"],
-        message["sampleRate"],
-        message["channels"],
-      );
+        ailiaSpeechToText.pushInputData(
+          message["chunk"],
+          message["sampleRate"],
+          message["channels"],
+        );
 
-      while (ailiaSpeechToText.isBuffered() && interrupt == false) {
-        var result = ailiaSpeechToText.transcribe();
-        if (result.isNotEmpty) {
-          answerPort.send({
-            "intermediate": false,
-            "terminate": false,
-            "text": result,
-          });
+        while (ailiaSpeechToText.isBuffered() && interrupt == false) {
+          var result = ailiaSpeechToText.transcribe();
+          if (result.isNotEmpty) {
+            answerPort.send({
+              "intermediate": false,
+              "terminate": false,
+              "text": result,
+            });
+          }
         }
+      } catch (e) {
+        // A failed chunk must not kill the isolate's message loop.
+        print("speech transcribe error: $e");
       }
       return;
     }
@@ -258,7 +272,7 @@ class SpeechToTextIsolate {
 class AudioProcessingWhisperStreaming {
   final SpeechToTextIsolate _ailiaSpeechModel = SpeechToTextIsolate();
 
-  Future<void> open(File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, String lang, bool virtualMemory, Function intermediateCallback, Function messageCallback, Function finishCallback) async{
+  Future<void> open(File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, String lang, bool virtualMemory, bool liveTranscribe, Function intermediateCallback, Function messageCallback, Function finishCallback) async{
     int typeId = 0;
     if (type == "whisper_tiny"){
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_TINY;
@@ -274,11 +288,14 @@ class AudioProcessingWhisperStreaming {
       // Please add com.apple.developer.kernel.increased-memory-limit for iOS
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_LARGE_V3;
     }
+    if (type == "sensevoice_small"){
+      typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_SENSEVOICE_SMALL;
+    }
     if (virtualMemory){
       Directory path = await getTemporaryDirectory();
       AiliaModel.setTemporaryCachePath(path.path);
     }
-    _ailiaSpeechModel.init(intermediateCallback, messageCallback, finishCallback, onnx_encoder_file, onnx_decoder_file, vad_file, typeId, false, lang, true, env_id, virtualMemory);
+    _ailiaSpeechModel.init(intermediateCallback, messageCallback, finishCallback, onnx_encoder_file, onnx_decoder_file, vad_file, typeId, liveTranscribe, lang, true, env_id, virtualMemory);
   }
 
   void send(List<double> pcm, int samplesPerSecond){

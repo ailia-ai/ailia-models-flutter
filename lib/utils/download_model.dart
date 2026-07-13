@@ -28,6 +28,10 @@ Future<String> getModelPath(String path) async {
   return filePath;
 }
 
+// Downloads in flight, keyed by destination path, so concurrent requests
+// for the same file share one download instead of corrupting the temp file.
+final Map<String, Future<File?>> _inflightDownloads = {};
+
 Future<File?> downloadModel(
     String url, String filename, Function(File)? downloadCallback, Function? progressCallback) async {
   var filePath = await getModelPath(filename);
@@ -36,6 +40,27 @@ Future<File?> downloadModel(
     downloadCallback?.call(file);
     return file;
   }
+
+  final inflight = _inflightDownloads[filePath];
+  if (inflight != null) {
+    final result = await inflight;
+    if (result != null) {
+      downloadCallback?.call(result);
+    }
+    return result;
+  }
+  final future =
+      _downloadModelFile(url, filePath, filename, downloadCallback, progressCallback);
+  _inflightDownloads[filePath] = future;
+  try {
+    return await future;
+  } finally {
+    _inflightDownloads.remove(filePath);
+  }
+}
+
+Future<File?> _downloadModelFile(String url, String filePath, String filename,
+    Function(File)? downloadCallback, Function? progressCallback) async {
 
   // create the folder if not exists.
   final Directory dir = Directory(p.dirname(filePath));
@@ -77,42 +102,49 @@ Future<File?> downloadModel(
           return;
         }
         downloaded += chunk.length;
-        progressCallback?.call(downloaded);
+        progressCallback?.call(downloaded, r.contentLength ?? 0);
       },
       onDone: () async {
         stopwatch.stop();
-        final speed =
-            0; //getDownloadSpeed(bytes: downloaded, stopwatch: stopwatch);
 
-        await tempFileSink.close();
-
-        if (hasIOError) {
-          await tempFile.delete();
-          throw Exception("$filename : ${ioError.toString()}");
-        }
-
-        if (r.statusCode != 200) {
-          await tempFile.delete();
-          throw Exception("$filename : ${r.statusCode}");
-        }
-
+        // Failures must complete the completer (with null) instead of
+        // throwing, otherwise awaiting callers hang forever.
         try {
+          await tempFileSink.close();
+
+          if (hasIOError) {
+            throw Exception("$filename : ${ioError.toString()}");
+          }
+
+          if (r.statusCode != 200) {
+            throw Exception("$filename : HTTP ${r.statusCode}");
+          }
+
           await tempFile.rename(filePath);
-        } on FileSystemException catch (e) {
-          await tempFile.delete();
-          throw Exception("$filename : ${e.toString()}");
+        } catch (e) {
+          print("download failed: $e");
+          try {
+            if (tempFile.existsSync()) {
+              await tempFile.delete();
+            }
+          } catch (_) {}
+          completer.complete(null);
+          return;
         }
 
-        //progressCallback(filename, speed, 0);
         final file = File(filePath);
         downloadCallback?.call(file);
         completer.complete(file);
       },
-      onError: (_) {
+      onError: (e) {
         stopwatch.stop();
+        print("download failed: $e");
         completer.complete(null);
       },
     );
+  }, onError: (e) {
+    print("download failed: $e");
+    completer.complete(null);
   });
 
   return await completer.future;

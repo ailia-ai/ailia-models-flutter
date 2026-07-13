@@ -75,13 +75,17 @@ Future<img.Image> uiImageToImage(ui.Image image) async {
 }
 
 Future<ui.Image> imageToUiImage(img.Image image) async {
-  final bytes = img.encodePng(image);
-  return _uint8ListToImage(bytes);
+  // Raw pixel decode; much faster than a PNG encode/decode round trip.
+  final rgba =
+      image.convert(numChannels: 4).getBytes(order: img.ChannelOrder.rgba);
+  return rgbaBytesToUiImage(rgba, image.width, image.height);
 }
 
-Future<ui.Image> _uint8ListToImage(Uint8List bytes) async {
+/// Builds a ui.Image from tightly packed RGBA bytes.
+Future<ui.Image> rgbaBytesToUiImage(Uint8List rgba, int width, int height) {
   final completer = Completer<ui.Image>();
-  ui.decodeImageFromList(bytes, completer.complete);
+  ui.decodeImageFromPixels(
+      rgba, width, height, ui.PixelFormat.rgba8888, completer.complete);
   return completer.future;
 }
 

@@ -19,7 +19,7 @@ class AudioProcessingWhisper {
     List<String> modelList = List<String>.empty(growable: true);
 
     modelList.add("silero-vad");
-    modelList.add("silero_vad.onnx");
+    modelList.add("silero_vad_v6_2.onnx");
 
     if (type == "whisper_tiny"){
       modelList.add("whisper");
@@ -47,6 +47,12 @@ class AudioProcessingWhisper {
       modelList.add("whisper");
       modelList.add("encoder_turbo_weights.pb");
     }
+    if (type == "sensevoice_small"){
+      modelList.add("sensevoice");
+      modelList.add("sensevoice_small.onnx");
+      modelList.add("sensevoice");
+      modelList.add("sensevoice_small.model");
+    }
 
     return modelList;
   }
@@ -55,9 +61,9 @@ class AudioProcessingWhisper {
     print(text);
   }
 
-  String _transcribeOneShot(Wav wav){
+  List<SpeechText> _transcribeOneShot(Wav wav){
       // One shot feed mode
-      String transcribeResult = "";
+      List<SpeechText> transcribeResult = List<SpeechText>.empty(growable: true);
       List<double> pcm = List<double>.empty(growable: true);
 
       for (int i = 0; i < wav.channels[0].length; ++i) {
@@ -69,17 +75,14 @@ class AudioProcessingWhisper {
       _ailiaSpeechModel.pushInputData(pcm, wav.samplesPerSecond, wav.channels.length);
       _ailiaSpeechModel.finalizeInputData(); // for one shot
 
-      List<SpeechText> texts = _ailiaSpeechModel.transcribeBatch();
-      for (int i = 0; i < texts.length; i++){
-        transcribeResult = transcribeResult + texts[i].text;
-      }
+      transcribeResult.addAll(_ailiaSpeechModel.transcribeBatch());
 
       return transcribeResult;
   }
 
-  String _transcribeStep(Wav wav){
+  List<SpeechText> _transcribeStep(Wav wav){
       // chunk feed mode
-      String transcribeResult = "";
+      List<SpeechText> transcribeResult = List<SpeechText>.empty(growable: true);
       int chunkSize = wav.samplesPerSecond;
       for (int t = 0; t < wav.channels[0].length; t += chunkSize){
         List<double> pcm = List<double>.empty(growable: true);
@@ -95,16 +98,13 @@ class AudioProcessingWhisper {
           _ailiaSpeechModel.finalizeInputData();
         }
 
-        List<SpeechText> texts = _ailiaSpeechModel.transcribeBatch();
-        for (int i = 0; i < texts.length; i++){
-          transcribeResult = transcribeResult + texts[i].text;
-        }
+        transcribeResult.addAll(_ailiaSpeechModel.transcribeBatch());
       }
 
       return transcribeResult;
   }
 
-  Future<String> transcribe(Wav wav, File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, bool virtualMemory) async{
+  Future<List<SpeechText>> transcribe(Wav wav, File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, bool virtualMemory) async{
     _ailiaSpeechModel.create(false, false, env_id, virtualMemory:virtualMemory);
     int typeId = 0;
     if (type == "whisper_tiny"){
@@ -121,6 +121,9 @@ class AudioProcessingWhisper {
       // Please add com.apple.developer.kernel.increased-memory-limit for iOS
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_LARGE_V3;
     }
+    if (type == "sensevoice_small"){
+      typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_SENSEVOICE_SMALL;
+    }
     if (virtualMemory){
       Directory path = await getTemporaryDirectory();
       AiliaModel.setTemporaryCachePath(path.path);
@@ -128,18 +131,10 @@ class AudioProcessingWhisper {
     String lang = "auto"; // auto or ja
     _ailiaSpeechModel.open(onnx_encoder_file, onnx_decoder_file, vad_file, lang, typeId);
 
-    String transcribeResult = "";
-
     //_ailiaSpeechModel.setIntermediateCallback(_intermediateCallback);
 
-    int startTime = DateTime.now().millisecondsSinceEpoch;
-
-    //transcribeResult = _transcribeOneShot(wav);
-    transcribeResult = _transcribeStep(wav);
-
-    int endTime = DateTime.now().millisecondsSinceEpoch;
-
-    transcribeResult = transcribeResult + "\nprocessing time : ${(endTime - startTime) / 1000} sec for ${(wav.channels[0].length / wav.samplesPerSecond)} sec audio.";
+    //List<SpeechText> transcribeResult = _transcribeOneShot(wav);
+    List<SpeechText> transcribeResult = _transcribeStep(wav);
 
     _ailiaSpeechModel.close();
 
