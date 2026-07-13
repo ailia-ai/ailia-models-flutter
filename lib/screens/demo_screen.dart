@@ -1887,6 +1887,7 @@ class _DemoScreenState extends State<DemoScreen> {
                 ),
               ),
             ),
+          const SizedBox(height: 16),
           TextField(
             controller: _e5QueryController,
             decoration: const InputDecoration(
