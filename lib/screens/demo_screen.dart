@@ -2261,6 +2261,8 @@ class _DemoScreenState extends State<DemoScreen> {
         // null means the default device, which is the first one.
         value: _macCameraDeviceId ?? _macCameraDevices.first.deviceId,
         underline: const SizedBox.shrink(),
+        isDense: true,
+        style: Theme.of(context).textTheme.bodyMedium,
         // Switching devices mid-run would restart the capture session.
         onChanged: _realtimeActive
             ? null
@@ -2288,6 +2290,8 @@ class _DemoScreenState extends State<DemoScreen> {
     return DropdownButton<int>(
       value: _pluginCameraIndex,
       underline: const SizedBox.shrink(),
+      isDense: true,
+      style: Theme.of(context).textTheme.bodyMedium,
       onChanged: _realtimeActive
           ? null
           : (value) {
