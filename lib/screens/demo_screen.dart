@@ -2165,6 +2165,10 @@ class _DemoScreenState extends State<DemoScreen> {
           setState(() {
             _macCameraController = controller;
           });
+          final size = controller.args.size;
+          if (size.width > 0 && size.height > 0) {
+            _updateCameraAspect(size.width.toInt(), size.height.toInt());
+          }
         },
       );
     } else {
