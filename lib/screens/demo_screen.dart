@@ -97,6 +97,17 @@ class _DemoScreenState extends State<DemoScreen> {
 
   bool get _isE5Model => widget.model.id == 'multilingual-e5';
 
+  bool get _isSam2 => widget.model.id == 'sam2';
+
+  // SAM2 segmentation point (normalized 0..1); movable by tapping the
+  // image or the camera preview.
+  Offset _sam2Point = const Offset(0.5, 0.5);
+  // Kept open after a still-image run so taps only re-run the prompt
+  // encoder + mask decoder on the cached image features.
+  SegmentImage? _sam2Still;
+  img.Image? _sam2StillInput;
+  bool _sam2Busy = false;
+
   // Query for the multimodal (image + text) LLM demo.
   final TextEditingController _vlmQueryController =
       TextEditingController(text: 'この画像を簡潔に説明してください。');
@@ -227,6 +238,8 @@ class _DemoScreenState extends State<DemoScreen> {
       _chatLlm?.close();
       _chatLlm = null;
     }
+    _sam2Still?.close();
+    _sam2Still = null;
     _scrollController.dispose();
     _cameraController?.dispose();
     _macCameraController?.destroy();
@@ -305,6 +318,10 @@ class _DemoScreenState extends State<DemoScreen> {
 
   Future<void> _switchInputSource(InputSource source) async {
     if (source == InputSource.camera) {
+      _sam2Still?.close();
+      _sam2Still = null;
+      _sam2StillInput = null;
+      _sam2Point = const Offset(0.5, 0.5);
       _safeSetState(() {
         _inputSource = source;
         _cameraError = null;
@@ -348,6 +365,10 @@ class _DemoScreenState extends State<DemoScreen> {
     } else {
       _realtimeActive = false;
       _stopSpeechRecognition();
+      _sam2Still?.close();
+      _sam2Still = null;
+      _sam2StillInput = null;
+      _sam2Point = const Offset(0.5, 0.5);
       final controller = _cameraController;
       _cameraController = null;
       await controller?.dispose();
@@ -738,7 +759,11 @@ class _DemoScreenState extends State<DemoScreen> {
         int startTime = DateTime.now().millisecondsSinceEpoch;
         final inputImage = _frameToImage(frame);
         await segmentImage.setImage(inputImage);
-        final point = img.Point(frame.width ~/ 2, frame.height ~/ 2);
+        final p = _sam2Point;
+        final point = img.Point(
+          (frame.width * p.dx).round().clamp(0, frame.width - 1),
+          (frame.height * p.dy).round().clamp(0, frame.height - 1),
+        );
         final maskImage = segmentImage.run([point]);
         int endTime = DateTime.now().millisecondsSinceEpoch;
         if (maskImage == null || !mounted) {
@@ -916,6 +941,10 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   void _ailiaImageSegmentationSam2() async {
+    _sam2Still?.close();
+    _sam2Still = null;
+    _sam2StillInput = null;
+
     image = await _loadInputUiImage(widget.model.sampleAsset!);
     _safeSetState(() {});
 
@@ -924,35 +953,78 @@ class _DemoScreenState extends State<DemoScreen> {
       return;
     }
 
-    SegmentImage segmentImage = SegmentImage();
+    final segmentImage = SegmentImage();
     segmentImage.open(files[0].path, files[1].path, files[2].path,
         envId: selectedEnvId);
 
+    _safeSetState(() {
+      _status = "Encoding image...";
+    });
+    // Let the status render before the encoder blocks the UI isolate.
+    await Future.delayed(const Duration(milliseconds: 50));
     final inputImage = await uiImageToImage(image!);
-    await segmentImage.setImage(inputImage);
-
-    // The default sample point matches the bundled truck image. For a
-    // captured photo, use the image center.
-    final point = _capturedBytes != null
-        ? img.Point(inputImage.width ~/ 2, inputImage.height ~/ 2)
-        : img.Point(500, 375);
-    final maskImage = segmentImage.run([point]);
-
-    if (maskImage == null) {
+    try {
+      await segmentImage.setImage(inputImage);
+    } catch (e) {
+      segmentImage.close();
+      _showError(e);
+      return;
+    }
+    if (!mounted) {
       segmentImage.close();
       return;
     }
-
-    img.Image result =
-        await segmentImage.overlayMaskImage(inputImage, maskImage);
-
-    final maskUiImage = await imageToUiImage(result);
+    // Keep the model open with the encoded features so taps on the
+    // image only re-run the mask decoder.
+    _sam2Still = segmentImage;
+    _sam2StillInput = inputImage;
     _safeSetState(() {
-      predict_result = 'Generated masks.';
-      image = maskUiImage;
+      _status = "";
     });
 
-    segmentImage.close();
+    // The default point matches the bundled truck image; tap to move it.
+    await _runSam2AtPoint(Offset(
+      (500 / inputImage.width).clamp(0.0, 1.0),
+      (375 / inputImage.height).clamp(0.0, 1.0),
+    ));
+  }
+
+  /// Segments at [point] (normalized) using the cached image features:
+  /// only the prompt encoder and mask decoder run.
+  Future<void> _runSam2AtPoint(Offset point) async {
+    final seg = _sam2Still;
+    final input = _sam2StillInput;
+    if (seg == null || input == null || _sam2Busy) {
+      return;
+    }
+    _sam2Busy = true;
+    try {
+      _safeSetState(() {
+        _sam2Point = point;
+      });
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      final maskImage = seg.run([
+        img.Point(
+          (input.width * point.dx).round().clamp(0, input.width - 1),
+          (input.height * point.dy).round().clamp(0, input.height - 1),
+        )
+      ]);
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+      if (maskImage == null) {
+        return;
+      }
+      // Overlay on a clone: overlayMaskImage writes into the source
+      // pixels, and later taps need the pristine input again.
+      final result = await seg.overlayMaskImage(input.clone(), maskImage);
+      final maskUiImage = await imageToUiImage(result);
+      _safeSetState(() {
+        image = maskUiImage;
+        predict_result =
+            "mask decoder : ${(endTime - startTime) / 1000} sec";
+      });
+    } finally {
+      _sam2Busy = false;
+    }
   }
 
   void _ailiaBackgroundRemovalU2Net() async {
@@ -1721,25 +1793,40 @@ class _DemoScreenState extends State<DemoScreen> {
       double screenHeight = MediaQuery.of(context).size.height;
       double height = screenHeight * 0.45;
       double width = height * image!.width / image!.height;
+      final samInteractive = _isSam2 && _sam2Still != null;
+      Widget content = Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            painter: ImageEditor(image: image!),
+          ),
+          if (_rtBoxes.isNotEmpty || samInteractive)
+            CustomPaint(
+              painter: CameraOverlayPainter(
+                boxes: _rtBoxes,
+                categories: _rtCategories,
+                marker: samInteractive ? _sam2Point : null,
+              ),
+            ),
+        ],
+      );
+      if (samInteractive) {
+        // Tap to segment at that point using the cached image features.
+        content = GestureDetector(
+          onTapDown: (details) {
+            _runSam2AtPoint(Offset(
+              (details.localPosition.dx / width).clamp(0.0, 1.0),
+              (details.localPosition.dy / height).clamp(0.0, 1.0),
+            ));
+          },
+          child: content,
+        );
+      }
       return Container(
         width: width,
         height: height,
         margin: const EdgeInsets.only(top: 12),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            CustomPaint(
-              painter: ImageEditor(image: image!),
-            ),
-            if (_rtBoxes.isNotEmpty)
-              CustomPaint(
-                painter: CameraOverlayPainter(
-                  boxes: _rtBoxes,
-                  categories: _rtCategories,
-                ),
-              ),
-          ],
-        ),
+        child: content,
       );
     } else {
       return const SizedBox.shrink();
@@ -2154,36 +2241,55 @@ class _DemoScreenState extends State<DemoScreen> {
       constraints: const BoxConstraints(maxWidth: 480),
       child: AspectRatio(
         aspectRatio: _cameraAspect,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            preview,
-            if (frozen)
-              GestureDetector(
-                onTap: () {
-                  _safeSetState(() {
-                    _capturedBytes = null;
-                    _capturedPath = null;
-                  });
-                },
-                child: Image.memory(
-                  _capturedBytes!,
-                  fit: BoxFit.contain,
+        child: LayoutBuilder(builder: (context, constraints) {
+          final stack = Stack(
+            fit: StackFit.expand,
+            children: [
+              preview,
+              if (frozen)
+                GestureDetector(
+                  onTap: () {
+                    _safeSetState(() {
+                      _capturedBytes = null;
+                      _capturedPath = null;
+                    });
+                  },
+                  child: Image.memory(
+                    _capturedBytes!,
+                    fit: BoxFit.contain,
+                  ),
                 ),
-              ),
-            if (!frozen)
-              CustomPaint(
-                painter: CameraOverlayPainter(
-                  boxes: _rtBoxes,
-                  categories: _rtCategories,
-                  frameImage: _rtFrameImage,
-                  overlayImage: _rtOverlayImage,
-                  label: _rtLabel,
-                  showCenterMarker: widget.model.id == 'sam2',
+              if (!frozen)
+                CustomPaint(
+                  painter: CameraOverlayPainter(
+                    boxes: _rtBoxes,
+                    categories: _rtCategories,
+                    frameImage: _rtFrameImage,
+                    overlayImage: _rtOverlayImage,
+                    label: _rtLabel,
+                    marker: _isSam2 ? _sam2Point : null,
+                  ),
                 ),
-              ),
-          ],
-        ),
+            ],
+          );
+          if (!_isSam2 || frozen) {
+            return stack;
+          }
+          // Tap to move the segmentation point.
+          return GestureDetector(
+            onTapDown: (details) {
+              _safeSetState(() {
+                _sam2Point = Offset(
+                  (details.localPosition.dx / constraints.maxWidth)
+                      .clamp(0.0, 1.0),
+                  (details.localPosition.dy / constraints.maxHeight)
+                      .clamp(0.0, 1.0),
+                );
+              });
+            },
+            child: stack,
+          );
+        }),
       ),
     );
   }
@@ -2348,7 +2454,7 @@ class CameraOverlayPainter extends CustomPainter {
     this.frameImage,
     this.overlayImage,
     this.label = '',
-    this.showCenterMarker = false,
+    this.marker,
   });
 
   final List<AiliaDetectorObject> boxes;
@@ -2360,8 +2466,8 @@ class CameraOverlayPainter extends CustomPainter {
   final ui.Image? overlayImage;
   final String label;
 
-  /// Marks the segmentation point (image center) with a red dot.
-  final bool showCenterMarker;
+  /// Marks the segmentation point (normalized 0..1) with a red dot.
+  final Offset? marker;
 
   static const List<Color> _palette = [
     Colors.red,
@@ -2419,8 +2525,10 @@ class CameraOverlayPainter extends CustomPainter {
       _drawLabel(canvas, label, 4, 4, Colors.black54);
     }
 
-    if (showCenterMarker) {
-      final center = Offset(size.width / 2, size.height / 2);
+    final markerPos = marker;
+    if (markerPos != null) {
+      final center =
+          Offset(markerPos.dx * size.width, markerPos.dy * size.height);
       canvas.drawCircle(
         center,
         7,
@@ -2452,7 +2560,7 @@ class CameraOverlayPainter extends CustomPainter {
         oldDelegate.frameImage != frameImage ||
         oldDelegate.overlayImage != overlayImage ||
         oldDelegate.label != label ||
-        oldDelegate.showCenterMarker != showCenterMarker;
+        oldDelegate.marker != marker;
   }
 }
 
