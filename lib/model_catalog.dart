@@ -18,11 +18,11 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image),
   ModelInfo('u2net', 'U-2-Net', 'Background Removal', ModelInputKind.image),
   ModelInfo('yolox', 'YOLOX', 'Object Detection', ModelInputKind.image),
-  ModelInfo('whisper_tiny', 'Whisper Tiny', 'Audio Processing', ModelInputKind.audio),
-  ModelInfo('whisper_small', 'Whisper Small', 'Audio Processing', ModelInputKind.audio),
-  ModelInfo('whisper_medium', 'Whisper Medium', 'Audio Processing', ModelInputKind.audio),
-  ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo', 'Audio Processing', ModelInputKind.audio),
-  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Audio Processing', ModelInputKind.audio),
+  ModelInfo('whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
+  ModelInfo('whisper_small', 'Whisper Small', 'Speech To Text', ModelInputKind.audio),
+  ModelInfo('whisper_medium', 'Whisper Medium', 'Speech To Text', ModelInputKind.audio),
+  ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo', 'Speech To Text', ModelInputKind.audio),
+  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text', ModelInputKind.audio),
   ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing', ModelInputKind.text),
   ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing', ModelInputKind.text),
   ModelInfo('fugumt-ja-en', 'FuguMT JA-EN', 'Natural Language Processing', ModelInputKind.text),
@@ -47,6 +47,8 @@ IconData categoryIcon(String category) {
       return Icons.center_focus_strong;
     case 'Audio Processing':
       return Icons.graphic_eq;
+    case 'Speech To Text':
+      return Icons.mic;
     case 'Natural Language Processing':
       return Icons.translate;
     case 'Text To Speech':
@@ -67,6 +69,7 @@ Color categoryColor(BuildContext context, String category) {
     case 'Object Detection':
       return scheme.primary;
     case 'Audio Processing':
+    case 'Speech To Text':
       return scheme.tertiary;
     case 'Natural Language Processing':
       return scheme.secondary;

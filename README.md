@@ -26,7 +26,7 @@ flutter run
 
 ## Models
 
-### Audio Processing
+### Speech To Text
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
