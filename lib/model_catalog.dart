@@ -13,11 +13,12 @@ class ModelInfo {
   /// Bundled sample image shown before the first run (image demos).
   final String? sampleAsset;
 
-  /// Initial text for the text-to-speech input box.
-  final String? defaultTtsText;
+  /// Initial text for the demo's text input box (TTS text, translation
+  /// source, ...).
+  final String? defaultInputText;
 
   const ModelInfo(this.id, this.name, this.category, this.input,
-      {this.sampleAsset, this.defaultTtsText});
+      {this.sampleAsset, this.defaultInputText});
 
   bool get isSpeechToText => category == 'Speech To Text';
   bool get isTextToSpeech => category == 'Text To Speech';
@@ -51,20 +52,20 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing',
       ModelInputKind.text),
   ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing',
-      ModelInputKind.text),
+      ModelInputKind.text, defaultInputText: 'Hello world.'),
   ModelInfo('fugumt-ja-en', 'FuguMT JA-EN', 'Natural Language Processing',
-      ModelInputKind.text),
+      ModelInputKind.text, defaultInputText: 'こんにちは世界。'),
   ModelInfo('tacotron2', 'Tacotron2', 'Text To Speech', ModelInputKind.text,
-      defaultTtsText: 'Hello world.'),
+      defaultInputText: 'Hello world.'),
   ModelInfo(
       'gpt-sovits-ja', 'GPT-SoVITS JA', 'Text To Speech', ModelInputKind.text,
-      defaultTtsText: 'こんにちは。今日はいい天気ですね。'),
+      defaultInputText: 'こんにちは。今日はいい天気ですね。'),
   ModelInfo(
       'gpt-sovits-en', 'GPT-SoVITS EN', 'Text To Speech', ModelInputKind.text,
-      defaultTtsText: 'Hello world.'),
+      defaultInputText: 'Hello world.'),
   ModelInfo(
       'gpt-sovits-zh', 'GPT-SoVITS ZH', 'Text To Speech', ModelInputKind.text,
-      defaultTtsText: '你好世界。'),
+      defaultInputText: '你好世界。'),
   ModelInfo(
       'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
   ModelInfo(

@@ -78,7 +78,24 @@ class _DemoScreenState extends State<DemoScreen> {
 
   // Text spoken by the text-to-speech demos.
   late final TextEditingController _ttsTextController =
-      TextEditingController(text: widget.model.defaultTtsText ?? '');
+      TextEditingController(text: widget.model.defaultInputText ?? '');
+
+  // Source text for the translation demos.
+  late final TextEditingController _translateController =
+      TextEditingController(text: widget.model.defaultInputText ?? '');
+
+  bool get _isTranslateModel => widget.model.id.startsWith('fugumt');
+
+  // Multilingual-E5: one query compared against three reference texts.
+  final TextEditingController _e5QueryController =
+      TextEditingController(text: 'Hello.');
+  final List<TextEditingController> _e5RefControllers = [
+    TextEditingController(text: 'こんにちは。'),
+    TextEditingController(text: 'Today is good day.'),
+    TextEditingController(text: '水をマレーシアから買わなくてはならない。'),
+  ];
+
+  bool get _isE5Model => widget.model.id == 'multilingual-e5';
 
   // Query for the multimodal (image + text) LLM demo.
   final TextEditingController _vlmQueryController =
@@ -197,6 +214,11 @@ class _DemoScreenState extends State<DemoScreen> {
     _realtimeActive = false;
     _playbackTimer?.cancel();
     _ttsTextController.dispose();
+    _translateController.dispose();
+    _e5QueryController.dispose();
+    for (final controller in _e5RefControllers) {
+      controller.dispose();
+    }
     _vlmQueryController.dispose();
     _chatTextController.dispose();
     // While a reply is streaming, chatStream still holds the native
@@ -1171,22 +1193,28 @@ class _DemoScreenState extends State<DemoScreen> {
         NaturalLanguageProcessingMultilingualE5 e5 =
             NaturalLanguageProcessingMultilingualE5();
         e5.open(onnx_file, spe_file, selectedEnvId);
-        String text1 = "Hello.";
-        String text2 = "こんにちは。";
-        String text3 = "Today is good day.";
+        final query = _e5QueryController.text.trim();
+        final references = _e5RefControllers
+            .map((c) => c.text.trim())
+            .where((t) => t.isNotEmpty)
+            .toList();
         int startTime = DateTime.now().millisecondsSinceEpoch;
-        List<double> embedding1 = e5.textEmbedding(text1);
-        List<double> embedding2 = e5.textEmbedding(text2);
-        List<double> embedding3 = e5.textEmbedding(text3);
-        double sim1 = e5.cosSimilarity(embedding1, embedding2);
-        double sim2 = e5.cosSimilarity(embedding1, embedding3);
+        final queryEmbedding = e5.textEmbedding(query);
+        final scores = [
+          for (final reference in references)
+            e5.cosSimilarity(queryEmbedding, e5.textEmbedding(reference)),
+        ];
         int endTime = DateTime.now().millisecondsSinceEpoch;
         String profileText =
             "processing time : ${(endTime - startTime) / 1000} sec";
         e5.close();
+        double best = scores.reduce(math.max);
+        final lines = [
+          for (int i = 0; i < references.length; i++)
+            "${scores[i] == best ? '★' : '　'} ${scores[i].toStringAsFixed(3)}  ${references[i]}",
+        ];
         _safeSetState(() {
-          predict_result =
-              "$text1 vs $text2 sim $sim1\n$text1 vs $text3 sim $sim2\n$profileText";
+          predict_result = "${lines.join('\n')}\n$profileText";
         });
       }, _displayDownloadProgress);
     }, _displayDownloadProgress);
@@ -1245,7 +1273,7 @@ class _DemoScreenState extends State<DemoScreen> {
       File targetFile = File(await getModelPath("fugumt-en-ja/target.spm"));
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
-      String targetText = "Hello world.";
+      String targetText = _translateController.text.trim();
       String outputText = fuguMT.translate(targetText, encoderFile, decoderFile,
           sourceFile, targetFile, false, selectedEnvId);
       int endTime = DateTime.now().millisecondsSinceEpoch;
@@ -1253,7 +1281,7 @@ class _DemoScreenState extends State<DemoScreen> {
           "processing time : ${(endTime - startTime) / 1000} sec";
 
       _safeSetState(() {
-        predict_result = "$targetText -> $outputText\n$profileText";
+        predict_result = "$outputText\n$profileText";
       });
     });
   }
@@ -1273,7 +1301,7 @@ class _DemoScreenState extends State<DemoScreen> {
       File targetFile = File(await getModelPath("fugumt-ja-en/target.spm"));
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
-      String targetText = "こんにちは世界。";
+      String targetText = _translateController.text.trim();
       String outputText = fuguMT.translate(targetText, encoderFile, decoderFile,
           sourceFile, targetFile, true, selectedEnvId);
       int endTime = DateTime.now().millisecondsSinceEpoch;
@@ -1281,7 +1309,7 @@ class _DemoScreenState extends State<DemoScreen> {
           "processing time : ${(endTime - startTime) / 1000} sec";
 
       _safeSetState(() {
-        predict_result = "$targetText -> $outputText\n$profileText";
+        predict_result = "$outputText\n$profileText";
       });
     });
   }
@@ -1824,6 +1852,53 @@ class _DemoScreenState extends State<DemoScreen> {
     _startPlaybackWaveform(path);
   }
 
+  Widget _buildTranslateField() {
+    if (!_isTranslateModel) {
+      return const SizedBox.shrink();
+    }
+    return _panel(
+      child: TextField(
+        controller: _translateController,
+        decoration: const InputDecoration(
+          labelText: 'Text to translate',
+          border: OutlineInputBorder(),
+        ),
+        minLines: 1,
+        maxLines: 3,
+      ),
+    );
+  }
+
+  Widget _buildE5Fields() {
+    if (!_isE5Model) {
+      return const SizedBox.shrink();
+    }
+    return _panel(
+      child: Column(
+        children: [
+          for (int i = 0; i < _e5RefControllers.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: TextField(
+                controller: _e5RefControllers[i],
+                decoration: InputDecoration(
+                  labelText: 'Reference ${i + 1}',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ),
+          TextField(
+            controller: _e5QueryController,
+            decoration: const InputDecoration(
+              labelText: 'Query',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVlmQueryField() {
     if (!_isVlmModel) {
       return const SizedBox.shrink();
@@ -2186,6 +2261,8 @@ class _DemoScreenState extends State<DemoScreen> {
                 _buildCameraPreview(),
                 _buildWaveform(),
                 _buildTtsTextField(),
+                _buildTranslateField(),
+                _buildE5Fields(),
                 _buildVlmQueryField(),
                 _buildImage(context),
                 _buildChatUi(),
