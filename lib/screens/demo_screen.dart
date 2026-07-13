@@ -14,9 +14,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
-import 'package:mic_stream/mic_stream.dart';
 import 'package:path/path.dart' show basename;
-import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
 import 'package:wav/wav.dart';
 
 import 'package:ailia_speech/ailia_speech_model.dart';
@@ -136,7 +135,9 @@ class _DemoScreenState extends State<DemoScreen> {
   DateTime? _recStart;
 
   // macOS mic_stream only supports 48kHz; other platforms use 44.1kHz.
-  final int _micSampleRate = !kIsWeb && Platform.isMacOS ? 48000 : 44100;
+  // The record package resamples to the requested rate on every
+  // platform; use the whisper native rate directly.
+  final int _micSampleRate = 16000;
 
   // Last synthesized audio, replayable without re-synthesizing.
   String? _lastTtsPath;
@@ -258,6 +259,7 @@ class _DemoScreenState extends State<DemoScreen> {
       listener = null;
       whisper_streaming.terminate();
     }
+    _stopMicRecorder();
     super.dispose();
   }
 
@@ -436,10 +438,32 @@ class _DemoScreenState extends State<DemoScreen> {
         return false;
       }
       final shot = await controller.takePicture();
-      _capturedBytes = await shot.readAsBytes();
+      final bytes = await shot.readAsBytes();
+      _capturedBytes = _mirrorCaptureToMatchPreview(bytes) ?? bytes;
+      if (_capturedBytes != bytes) {
+        await File(shot.path).writeAsBytes(_capturedBytes!);
+      }
       _capturedPath = shot.path;
     }
     return true;
+  }
+
+  /// camera_windows always mirrors the preview texture (selfie style)
+  /// but captured photos are not mirrored, so a capture looks flipped
+  /// compared to what the preview showed. Mirror the capture on Windows
+  /// to match the preview. Returns null when no correction is needed.
+  Uint8List? _mirrorCaptureToMatchPreview(Uint8List bytes) {
+    if (!Platform.isWindows) {
+      return null;
+    }
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      return null;
+    }
+    // Keep the display box in sync with the real capture aspect ratio
+    // so the frozen frame is not letterboxed.
+    _updateCameraAspect(decoded.width, decoded.height);
+    return img.encodeJpg(img.flipHorizontal(decoded));
   }
 
   Future<ui.Image> _loadInputUiImage(String defaultAsset) async {
@@ -515,10 +539,18 @@ class _DemoScreenState extends State<DemoScreen> {
       // Avoid piling up capture files while looping.
       await File(shot.path).delete();
     } catch (_) {}
-    final decoded = img.decodeImage(bytes);
+    var decoded = img.decodeImage(bytes);
     if (decoded == null) {
       return null;
     }
+    if (Platform.isWindows) {
+      // Match the preview, which camera_windows always mirrors.
+      decoded = img.flipHorizontal(decoded);
+    }
+    // The photo aspect ratio can differ from the preview aspect ratio
+    // (e.g. 4:3 photos with a 16:9 preview), which would letterbox the
+    // displayed frames. Track the real frame aspect instead.
+    _updateCameraAspect(decoded.width, decoded.height);
     final rgbImage = decoded.convert(numChannels: 3);
     return _CameraFrame(rgbImage.getBytes(order: img.ChannelOrder.rgb),
         rgbImage.width, rgbImage.height);
@@ -571,10 +603,23 @@ class _DemoScreenState extends State<DemoScreen> {
     }
   }
 
+  /// Clears everything that covers the live preview (the frozen still
+  /// capture and the last realtime result frame) so that the live view
+  /// of the newly selected camera becomes visible.
+  void _clearCameraResultOverlays() {
+    _capturedBytes = null;
+    _capturedPath = null;
+    _rtFrameImage = null;
+    _rtOverlayImage = null;
+    _rtBoxes = [];
+    _rtLabel = '';
+  }
+
   Future<void> _selectPluginCamera(int index) async {
     if (index == _pluginCameraIndex && _cameraController != null) {
       return;
     }
+    _clearCameraResultOverlays();
     final old = _cameraController;
     _cameraController = null;
     await old?.dispose();
@@ -1149,9 +1194,17 @@ class _DemoScreenState extends State<DemoScreen> {
   AudioProcessingWhisperStreaming whisper_streaming =
       AudioProcessingWhisperStreaming();
 
-  Stream<Uint8List>? stream;
+  AudioRecorder? _micRecorder;
   StreamSubscription? listener;
   bool terminating = false;
+
+  void _stopMicRecorder() {
+    final recorder = _micRecorder;
+    _micRecorder = null;
+    if (recorder != null) {
+      recorder.stop().then((_) => recorder.dispose()).catchError((_) {});
+    }
+  }
 
   String _formatTimeStamp(double sec) {
     final total = sec.floor();
@@ -1199,6 +1252,7 @@ class _DemoScreenState extends State<DemoScreen> {
     }
     listener!.cancel();
     listener = null;
+    _stopMicRecorder();
     _recStart = null;
     whisper_streaming.terminate();
     terminating = true;
@@ -1291,21 +1345,26 @@ class _DemoScreenState extends State<DemoScreen> {
         _intermediateCallback,
         _messageCallback,
         _finishCallback);
-    if (Platform.isIOS) {
-      await Permission.microphone.request();
-    }
-
+    final recorder = AudioRecorder();
     try {
-      stream = MicStream.microphone(
-          audioSource: AudioSource.DEFAULT,
-          sampleRate: _micSampleRate,
-          channelConfig: ChannelConfig.CHANNEL_IN_MONO,
-          audioFormat: AudioFormat.ENCODING_PCM_16BIT);
-      listener = stream!.listen(_processSamples);
+      // Asks for the microphone permission where required (iOS/Android).
+      if (!await recorder.hasPermission()) {
+        recorder.dispose();
+        _showError("Microphone permission denied.");
+        return;
+      }
+      final micStream = await recorder.startStream(RecordConfig(
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: _micSampleRate,
+        numChannels: 1,
+      ));
+      _micRecorder = recorder;
+      listener = micStream.listen(_processSamples);
       _recStart = DateTime.now();
       // Update the Run button into a Stop button.
       _safeSetState(() {});
     } catch (e) {
+      recorder.dispose();
       _showError("Microphone is not available: $e");
     }
   }
@@ -2252,6 +2311,18 @@ class _DemoScreenState extends State<DemoScreen> {
     return const SizedBox.shrink();
   }
 
+  /// camera_windows appends the device instance path to the camera name
+  /// (e.g. "Integrated Camera <\\?\usb#vid_...>"), which is far too long
+  /// for the UI. Show only the friendly name part before the path.
+  static String _cameraDisplayName(CameraDescription camera) {
+    final name = camera.name;
+    final pathStart = name.indexOf(' <');
+    if (pathStart > 0) {
+      return name.substring(0, pathStart);
+    }
+    return name;
+  }
+
   Widget _buildCameraDeviceSelector() {
     if (_usesMacCamera) {
       if (_macCameraDevices.isEmpty) {
@@ -2273,6 +2344,7 @@ class _DemoScreenState extends State<DemoScreen> {
                 _safeSetState(() {
                   _macCameraDeviceId = value;
                   _macLatestFrame = null;
+                  _clearCameraResultOverlays();
                 });
               },
         items: [
@@ -2304,7 +2376,7 @@ class _DemoScreenState extends State<DemoScreen> {
         for (int i = 0; i < _pluginCameras.length; i++)
           DropdownMenuItem<int>(
             value: i,
-            child: Text(_pluginCameras[i].name),
+            child: Text(_cameraDisplayName(_pluginCameras[i])),
           ),
       ],
     );

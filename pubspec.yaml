@@ -65,11 +65,11 @@ dependencies:
   wav:
   image:
   audioplayers:
-  mic_stream:
   permission_handler:
   camera:
   camera_windows:
   camera_macos:
+  record:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
