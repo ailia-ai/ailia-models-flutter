@@ -112,6 +112,9 @@ class _DemoScreenState extends State<DemoScreen> {
   List<AiliaDetectorObject> _rtBoxes = [];
   List<String> _rtCategories = const [];
   ui.Image? _rtOverlayImage;
+  // The exact camera frame the current results were computed on. Shown
+  // instead of the live preview so results never lag behind the video.
+  ui.Image? _rtFrameImage;
   String _rtLabel = '';
   double _cameraAspect = 4 / 3;
   CameraImageData? _macLatestFrame;
@@ -246,6 +249,7 @@ class _DemoScreenState extends State<DemoScreen> {
         isImageloaded = false;
         _rtBoxes = [];
         _rtOverlayImage = null;
+        _rtFrameImage = null;
         _rtLabel = '';
       });
       if (_usesMacCamera) {
@@ -293,6 +297,7 @@ class _DemoScreenState extends State<DemoScreen> {
         _capturedPath = null;
         _rtBoxes = [];
         _rtOverlayImage = null;
+        _rtFrameImage = null;
         _rtLabel = '';
         _waveform.clear();
       });
@@ -407,6 +412,24 @@ class _DemoScreenState extends State<DemoScreen> {
         rgbImage.width, rgbImage.height);
   }
 
+  /// Converts a camera frame to a ui.Image for display, using the raw
+  /// pixel decoder (no PNG round trip).
+  Future<ui.Image> _frameToUiImage(_CameraFrame frame) {
+    final rgba = Uint8List(frame.width * frame.height * 4);
+    int o = 0;
+    for (int i = 0; i < frame.rgb.length; i += 3) {
+      rgba[o++] = frame.rgb[i];
+      rgba[o++] = frame.rgb[i + 1];
+      rgba[o++] = frame.rgb[i + 2];
+      rgba[o++] = 255;
+    }
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromPixels(
+        rgba, frame.width, frame.height, ui.PixelFormat.rgba8888,
+        completer.complete);
+    return completer.future;
+  }
+
   img.Image _frameToImage(_CameraFrame frame) {
     return img.Image.fromBytes(
       width: frame.width,
@@ -440,6 +463,7 @@ class _DemoScreenState extends State<DemoScreen> {
       _realtimeActive = true;
       _rtBoxes = [];
       _rtOverlayImage = null;
+      _rtFrameImage = null;
       _rtLabel = '';
     });
     try {
@@ -524,9 +548,14 @@ class _DemoScreenState extends State<DemoScreen> {
         if (!mounted) {
           return;
         }
+        final frameImage = await _frameToUiImage(frame);
+        if (!mounted) {
+          return;
+        }
         setState(() {
           _rtBoxes = res;
           _rtCategories = yolox.category;
+          _rtFrameImage = frameImage;
           predict_result =
               "${res.length} objects / ${endTime - startTime} ms per frame";
         });
@@ -650,7 +679,9 @@ class _DemoScreenState extends State<DemoScreen> {
           return;
         }
         setState(() {
-          _rtOverlayImage = maskUiImage;
+          // The result already contains the processed frame, so show it
+          // as the full-opacity background.
+          _rtFrameImage = maskUiImage;
           predict_result = "${endTime - startTime} ms per frame";
         });
       });
@@ -2172,8 +2203,10 @@ class _DemoScreenState extends State<DemoScreen> {
                 painter: CameraOverlayPainter(
                   boxes: _rtBoxes,
                   categories: _rtCategories,
+                  frameImage: _rtFrameImage,
                   overlayImage: _rtOverlayImage,
                   label: _rtLabel,
+                  showCenterMarker: widget.model.id == 'sam2',
                 ),
               ),
           ],
@@ -2324,14 +2357,23 @@ class CameraOverlayPainter extends CustomPainter {
   CameraOverlayPainter({
     required this.boxes,
     required this.categories,
+    this.frameImage,
     this.overlayImage,
     this.label = '',
+    this.showCenterMarker = false,
   });
 
   final List<AiliaDetectorObject> boxes;
   final List<String> categories;
+
+  /// The processed camera frame, drawn opaquely under the results so the
+  /// displayed image matches what the model actually saw.
+  final ui.Image? frameImage;
   final ui.Image? overlayImage;
   final String label;
+
+  /// Marks the segmentation point (image center) with a red dot.
+  final bool showCenterMarker;
 
   static const List<Color> _palette = [
     Colors.red,
@@ -2346,6 +2388,13 @@ class CameraOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, ui.Size size) {
+    final frame = frameImage;
+    if (frame != null) {
+      final src = Rect.fromLTWH(
+          0, 0, frame.width.toDouble(), frame.height.toDouble());
+      final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+      canvas.drawImageRect(frame, src, dst, Paint());
+    }
     final overlay = overlayImage;
     if (overlay != null) {
       final src = Rect.fromLTWH(
@@ -2381,6 +2430,19 @@ class CameraOverlayPainter extends CustomPainter {
     if (label.isNotEmpty) {
       _drawLabel(canvas, label, 4, 4, Colors.black54);
     }
+
+    if (showCenterMarker) {
+      final center = Offset(size.width / 2, size.height / 2);
+      canvas.drawCircle(
+        center,
+        7,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = Colors.white,
+      );
+      canvas.drawCircle(center, 5, Paint()..color = Colors.red);
+    }
   }
 
   void _drawLabel(Canvas canvas, String text, double x, double y, Color bg) {
@@ -2400,8 +2462,10 @@ class CameraOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(CameraOverlayPainter oldDelegate) {
     return oldDelegate.boxes != boxes ||
+        oldDelegate.frameImage != frameImage ||
         oldDelegate.overlayImage != overlayImage ||
-        oldDelegate.label != label;
+        oldDelegate.label != label ||
+        oldDelegate.showCenterMarker != showCenterMarker;
   }
 }
 
