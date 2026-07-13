@@ -201,18 +201,11 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
   }
 
   Widget _buildImage(BuildContext context) {
-    final size = stillImageBoxSize(context, _image);
-    if (size == null) {
+    final image = _image;
+    if (image == null) {
       return const SizedBox.shrink();
     }
-    return Container(
-      width: size.width,
-      height: size.height,
-      margin: const EdgeInsets.only(top: 12),
-      child: CustomPaint(
-        painter: StillImagePainter(image: _image!),
-      ),
-    );
+    return StillImageBox(image: image);
   }
 
   @override

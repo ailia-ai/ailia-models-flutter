@@ -575,44 +575,24 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   }
 
   Widget _buildImage(BuildContext context) {
-    final size = stillImageBoxSize(context, _image);
-    if (size == null) {
+    final image = _image;
+    if (image == null) {
       return const SizedBox.shrink();
     }
     final samInteractive = _isSam2 && _sam2Still != null;
-    Widget content = Stack(
-      fit: StackFit.expand,
-      children: [
-        CustomPaint(
-          painter: StillImagePainter(image: _image!),
-        ),
-        if (_rtBoxes.isNotEmpty || samInteractive)
-          CustomPaint(
-            painter: CameraOverlayPainter(
-              boxes: _rtBoxes,
-              categories: _rtCategories,
-              marker: samInteractive ? _sam2Point : null,
-            ),
-          ),
-      ],
-    );
-    if (samInteractive) {
+    return StillImageBox(
+      image: image,
+      overlay: (_rtBoxes.isNotEmpty || samInteractive)
+          ? CustomPaint(
+              painter: CameraOverlayPainter(
+                boxes: _rtBoxes,
+                categories: _rtCategories,
+                marker: samInteractive ? _sam2Point : null,
+              ),
+            )
+          : null,
       // Tap to segment at that point using the cached image features.
-      content = GestureDetector(
-        onTapDown: (details) {
-          _runSam2AtPoint(Offset(
-            (details.localPosition.dx / size.width).clamp(0.0, 1.0),
-            (details.localPosition.dy / size.height).clamp(0.0, 1.0),
-          ));
-        },
-        child: content,
-      );
-    }
-    return Container(
-      width: size.width,
-      height: size.height,
-      margin: const EdgeInsets.only(top: 12),
-      child: content,
+      onTapNormalized: samInteractive ? _runSam2AtPoint : null,
     );
   }
 

@@ -749,21 +749,46 @@ class CameraDeviceSelector extends StatelessWidget {
         for (int i = 0; i < input.pluginCameras.length; i++)
           DropdownMenuItem<int>(
             value: i,
-            child: Text(_cameraDisplayName(input.pluginCameras[i])),
+            child: Text(_cameraDisplayName(input.pluginCameras, i)),
           ),
       ],
     );
   }
 }
 
-/// camera_windows appends the device instance path to the camera name
-/// (e.g. "Integrated Camera <\\?\usb#vid_...>"), which is far too long
-/// for the UI. Show only the friendly name part before the path.
-String _cameraDisplayName(CameraDescription camera) {
+/// The camera names the plugin reports are not fit for the UI on every
+/// platform: camera_windows appends the device instance path to the
+/// name ("Integrated Camera <\\?\usb#vid_...>"), iOS reports the
+/// AVCaptureDevice unique ID
+/// ("com.apple.avfoundation.avcapturedevice.built-in_video:0") and
+/// Android reports the bare camera id ("0"). Show the friendly part of
+/// the Windows name, and name mobile cameras by their lens direction.
+String _cameraDisplayName(List<CameraDescription> cameras, int index) {
+  final camera = cameras[index];
   final name = camera.name;
   final pathStart = name.indexOf(' <');
   if (pathStart > 0) {
     return name.substring(0, pathStart);
+  }
+  if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+    String label;
+    switch (camera.lensDirection) {
+      case CameraLensDirection.back:
+        label = 'Back Camera';
+      case CameraLensDirection.front:
+        label = 'Front Camera';
+      case CameraLensDirection.external:
+        label = 'External Camera';
+    }
+    // Number cameras that face the same way apart.
+    final sameDirection = [
+      for (final c in cameras)
+        if (c.lensDirection == camera.lensDirection) c
+    ];
+    if (sameDirection.length > 1) {
+      label = '$label ${sameDirection.indexOf(camera) + 1}';
+    }
+    return label;
   }
   return name;
 }
