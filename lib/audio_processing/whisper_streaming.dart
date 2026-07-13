@@ -49,24 +49,33 @@ void speechToTextIsolateFunc(SendPort initialReplyTo) {
     }
 
     if (message["cmd"] == "terminate") {
-      ailiaSpeechToText.finalizeInputData();
-      while (!ailiaSpeechToText.isComplete() && interrupt == false) {
-        var result = ailiaSpeechToText.transcribe();
-        if (result.isNotEmpty) {
-          answerPort.send({
-            "intermediate": false,
-            "terminate": false,
-            "text": result,
-          });
+      // finalizeInputData closes the sink, so draining with transcribe
+      // always reaches the complete flag. The try/finally only protects
+      // against exceptions: the finish message must reach the UI or the
+      // screen stays on "terminating" forever.
+      try {
+        ailiaSpeechToText.finalizeInputData();
+        while (!ailiaSpeechToText.isComplete() && interrupt == false) {
+          var result = ailiaSpeechToText.transcribe();
+          if (result.isNotEmpty) {
+            answerPort.send({
+              "intermediate": false,
+              "terminate": false,
+              "text": result,
+            });
+          }
         }
+        ailiaSpeechToText.reset();
+        ailiaSpeechToText.close();
+      } catch (e) {
+        print("speech terminate error: $e");
+      } finally {
+        answerPort.send({
+          "intermediate": false,
+          "terminate": true,
+          "text": null,
+        });
       }
-      ailiaSpeechToText.reset();
-      ailiaSpeechToText.close();
-      answerPort.send({
-        "intermediate": false,
-        "terminate": true,
-        "text": null,
-      });
       return;
     }
 
@@ -87,23 +96,28 @@ void speechToTextIsolateFunc(SendPort initialReplyTo) {
         });
       }
 
-      ailiaSpeechToText.setIntermediateCallback(intermediateCallback);
+      try {
+        ailiaSpeechToText.setIntermediateCallback(intermediateCallback);
 
-      ailiaSpeechToText.pushInputData(
-        message["chunk"],
-        message["sampleRate"],
-        message["channels"],
-      );
+        ailiaSpeechToText.pushInputData(
+          message["chunk"],
+          message["sampleRate"],
+          message["channels"],
+        );
 
-      while (ailiaSpeechToText.isBuffered() && interrupt == false) {
-        var result = ailiaSpeechToText.transcribe();
-        if (result.isNotEmpty) {
-          answerPort.send({
-            "intermediate": false,
-            "terminate": false,
-            "text": result,
-          });
+        while (ailiaSpeechToText.isBuffered() && interrupt == false) {
+          var result = ailiaSpeechToText.transcribe();
+          if (result.isNotEmpty) {
+            answerPort.send({
+              "intermediate": false,
+              "terminate": false,
+              "text": result,
+            });
+          }
         }
+      } catch (e) {
+        // A failed chunk must not kill the isolate's message loop.
+        print("speech transcribe error: $e");
       }
       return;
     }

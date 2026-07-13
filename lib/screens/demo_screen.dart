@@ -1031,7 +1031,7 @@ class _DemoScreenState extends State<DemoScreen> {
   void _finishCallback() {
     whisper_streaming.close();
     _safeSetState(() {
-      predict_result = "Stopped. The transcript is kept below.";
+      predict_result = "Complete.";
     });
     terminating = false;
   }
