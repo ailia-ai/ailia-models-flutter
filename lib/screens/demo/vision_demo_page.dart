@@ -11,6 +11,7 @@ import '../../background_removal/u2net/u2net.dart';
 import '../../image_classification/image_classification_sample.dart';
 import '../../image_segmentation/segment-anything-2/segment_image.dart';
 import '../../model_catalog.dart';
+import '../../object_detection/detic.dart';
 import '../../object_detection/yolox.dart';
 import '../../utils/image_util.dart';
 import 'camera_input.dart';
@@ -63,6 +64,11 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   bool _sam2Busy = false;
 
   bool get _isSam2 => widget.model.id == 'sam2';
+
+  // Detic's recognition resolution is selectable (SwinB is heavy, so
+  // the lower resolution trades accuracy for speed).
+  bool get _isDetic => widget.model.id == 'detic';
+  int _deticWidth = 640;
 
   @override
   void initState() {
@@ -156,6 +162,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
             break;
           case "yolox":
             await _runYoloXStill();
+            break;
+          case "detic":
+            await _runDeticStill();
             break;
         }
       });
@@ -339,6 +348,53 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     }
   }
 
+  Future<void> _runDeticStill() async {
+    await _loadSampleImage();
+
+    final files = await _session.downloadModelFiles(imageModelFiles['detic']!);
+    if (files == null) {
+      return;
+    }
+
+    final detic = Detic();
+    detic.open(files[0].path, envId: selectedEnvId);
+    try {
+      _session.setStatus("Running Detic ($_deticWidth px)...");
+      // Let the status render before the inference blocks the UI isolate.
+      await Future.delayed(const Duration(milliseconds: 50));
+      final inputImage = await uiImageToImage(_image!);
+
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      final result = detic.run(inputImage, _deticWidth);
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+
+      final overlay = result.maskOverlay == null
+          ? null
+          : await imageToUiImage(result.maskOverlay!);
+      if (!mounted) {
+        return;
+      }
+      _session.clearStatus();
+      safeSetState(() {
+        _rtBoxes = result.boxes;
+        _rtCategories = detic.category;
+        _rtOverlayImage = overlay;
+      });
+
+      String resultSubText = result.boxes
+          .map((e) =>
+              "${detic.category[e.category]} ${(e.prob * 100).toStringAsFixed(0)}%")
+          .join("\n");
+      String profileText =
+          "processing time : ${(endTime - startTime) / 1000} sec";
+      _session.showResult(
+          "${result.boxes.length} instances\n$resultSubText\n$profileText");
+    } finally {
+      // The SwinB model is too large to keep resident on mobile.
+      detic.close();
+    }
+  }
+
   // ---------------------------------------------------------------------
   // Realtime camera inference
   // ---------------------------------------------------------------------
@@ -373,6 +429,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
           break;
         case "sam2":
           await _realtimeSam2();
+          break;
+        case "detic":
+          await _realtimeDetic();
           break;
       }
     } catch (e) {
@@ -540,6 +599,38 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     );
   }
 
+  Future<void> _realtimeDetic() async {
+    final detic = Detic();
+    await _runRealtimeModel(
+      models: imageModelFiles['detic']!,
+      openModel: (files) => detic.open(files[0].path, envId: selectedEnvId),
+      closeModel: detic.close,
+      onFrame: (frame) async {
+        int startTime = DateTime.now().millisecondsSinceEpoch;
+        final result = detic.run(frame.toImage(), _deticWidth);
+        int endTime = DateTime.now().millisecondsSinceEpoch;
+        if (!mounted) {
+          return;
+        }
+        final frameImage = await frame.toUiImage();
+        final overlay = result.maskOverlay == null
+            ? null
+            : await imageToUiImage(result.maskOverlay!);
+        if (!mounted) {
+          return;
+        }
+        safeSetState(() {
+          _rtBoxes = result.boxes;
+          _rtCategories = detic.category;
+          _rtFrameImage = frameImage;
+          _rtOverlayImage = overlay;
+        });
+        _session.showResult(
+            "${result.boxes.length} instances / ${endTime - startTime} ms per frame");
+      },
+    );
+  }
+
   // ---------------------------------------------------------------------
   // UI
   // ---------------------------------------------------------------------
@@ -574,6 +665,23 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     );
   }
 
+  /// Recognition resolution selector for Detic: trade accuracy for
+  /// speed by choosing the longest side of the detection input.
+  Widget _buildDeticResolutionSelector() {
+    return SegmentedButton<int>(
+      segments: const [
+        ButtonSegment(value: 320, label: Text('320px (fast)')),
+        ButtonSegment(value: 640, label: Text('640px (accurate)')),
+      ],
+      selected: {_deticWidth},
+      onSelectionChanged: (selection) {
+        safeSetState(() {
+          _deticWidth = selection.first;
+        });
+      },
+    );
+  }
+
   Widget _buildImage(BuildContext context) {
     final image = _image;
     if (image == null) {
@@ -582,15 +690,17 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     final samInteractive = _isSam2 && _sam2Still != null;
     return StillImageBox(
       image: image,
-      overlay: (_rtBoxes.isNotEmpty || samInteractive)
-          ? CustomPaint(
-              painter: CameraOverlayPainter(
-                boxes: _rtBoxes,
-                categories: _rtCategories,
-                marker: samInteractive ? _sam2Point : null,
-              ),
-            )
-          : null,
+      overlay:
+          (_rtBoxes.isNotEmpty || _rtOverlayImage != null || samInteractive)
+              ? CustomPaint(
+                  painter: CameraOverlayPainter(
+                    boxes: _rtBoxes,
+                    categories: _rtCategories,
+                    overlayImage: _rtOverlayImage,
+                    marker: samInteractive ? _sam2Point : null,
+                  ),
+                )
+              : null,
       // Tap to segment at that point using the cached image features.
       onTapNormalized: samInteractive ? _runSam2AtPoint : null,
     );
@@ -603,6 +713,11 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       session: _session,
       children: [
         if (CameraInput.supported) _buildSourceSelector(),
+        if (_isDetic)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _buildDeticResolutionSelector(),
+          ),
         const SizedBox(height: 8),
         if (_useCamera)
           CameraPreviewView(

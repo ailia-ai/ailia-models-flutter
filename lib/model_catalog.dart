@@ -39,6 +39,8 @@ const List<ModelInfo> modelCatalog = [
       sampleAsset: 'assets/input_u2net.png'),
   ModelInfo('yolox', 'YOLOX', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/clock.jpg'),
+  ModelInfo('detic', 'Detic', 'Object Detection', ModelInputKind.image,
+      sampleAsset: 'assets/desk.jpg'),
   ModelInfo(
       'whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
   ModelInfo(
@@ -84,6 +86,7 @@ const List<ModelInfo> modelCatalog = [
 /// each file name exists in exactly one place.
 const Map<String, List<(String, String)>> imageModelFiles = {
   'yolox': [('yolox', 'yolox_s.opt.onnx')],
+  'detic': [('detic', 'Detic_C2_SwinB_896_4x_IN-21K+COCO_lvis_op16.onnx')],
   'resnet18': [('resnet18', 'resnet18.onnx')],
   'u2net': [('u2net', 'u2net_opset11.onnx')],
   'sam2': [
