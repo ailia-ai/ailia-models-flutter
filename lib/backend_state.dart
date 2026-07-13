@@ -1,3 +1,4 @@
+import 'package:ailia/ailia.dart' show AILIA_ENVIRONMENT_TYPE_BLAS;
 import 'package:ailia/ailia_model.dart';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:flutter/material.dart';
@@ -19,12 +20,9 @@ class BackendState {
   final ValueNotifier<String> selectedLlmBackend = ValueNotifier<String>('');
 
   /// The BLAS-accelerated CPU backend (CPU-AppleAccelerate on macOS,
-  /// CPU-IntelMKL on Windows, ...). The Dart wrapper does not expose the
-  /// environment type, so match by name.
+  /// CPU-IntelMKL on Windows, CPU-OpenBlas on Android, ...).
   static bool _isBlas(AiliaEnvironment e) =>
-      e.name.contains('BLAS') ||
-      e.name.contains('AppleAccelerate') ||
-      e.name.contains('IntelMKL');
+      e.type == AILIA_ENVIRONMENT_TYPE_BLAS;
 
   List<AiliaEnvironment> get envList {
     if (_envList.isEmpty) {
