@@ -599,8 +599,8 @@ class _DemoScreenState extends State<DemoScreen> {
   Future<void> _realtimeU2Net() async {
     _displayDownloadBegin();
     final u2netModelFile = await downloadModel(
-        'https://storage.googleapis.com/ailia-models/u2net/u2net.onnx',
-        'u2net.onnx',
+        'https://storage.googleapis.com/ailia-models/u2net/u2net_opset11.onnx',
+        'u2net_opset11.onnx',
         null,
         _displayDownloadProgress);
     await _displayDownloadEnd();
@@ -942,7 +942,7 @@ class _DemoScreenState extends State<DemoScreen> {
     _displayDownloadBegin();
 
     const remotePath = 'https://storage.googleapis.com/ailia-models/u2net/';
-    const u2netModel = 'u2net.onnx';
+    const u2netModel = 'u2net_opset11.onnx';
 
     final u2netModelFile = await downloadModel(
         '$remotePath$u2netModel', u2netModel, null, _displayDownloadProgress);

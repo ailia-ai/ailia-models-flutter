@@ -12,7 +12,7 @@ import 'demo_screen.dart';
 const Map<String, String> _markerFiles = {
   'resnet18': 'resnet18.onnx',
   'sam2': 'image_encoder_hiera_t.onnx',
-  'u2net': 'u2net.onnx',
+  'u2net': 'u2net_opset11.onnx',
   'yolox': 'yolox_s.opt.onnx',
   'whisper_tiny': 'encoder_tiny.opt3.onnx',
   'whisper_small': 'encoder_small.opt3.onnx',
