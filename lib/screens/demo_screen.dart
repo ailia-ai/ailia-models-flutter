@@ -381,9 +381,13 @@ class _DemoScreenState extends State<DemoScreen> {
       _inputSource == InputSource.camera &&
       widget.model.input == ModelInputKind.image;
 
-  _CameraFrame _bgraToRgb(CameraImageData data) {
-    // One pass builds both the RGB buffer for inference and the RGBA
-    // buffer for display.
+  _CameraFrame _streamToFrame(CameraImageData data) {
+    // camera_macos streams frames as ARGB, alpha first: the native side
+    // converts its BGRA capture through NSBitmapImageRep, whose meshed
+    // layout is A,R,G,B. Reading at the wrong offset shows up as a blue
+    // or red tint because the constant 255 alpha lands on a color
+    // channel. One pass builds both the RGB buffer for inference and
+    // the RGBA buffer for display.
     final out = Uint8List(data.width * data.height * 3);
     final rgba = Uint8List(data.width * data.height * 4);
     int o = 0;
@@ -391,9 +395,9 @@ class _DemoScreenState extends State<DemoScreen> {
     for (int y = 0; y < data.height; y++) {
       int i = y * data.bytesPerRow;
       for (int x = 0; x < data.width; x++) {
-        final b = data.bytes[i];
-        final g = data.bytes[i + 1];
-        final r = data.bytes[i + 2];
+        final r = data.bytes[i + 1];
+        final g = data.bytes[i + 2];
+        final b = data.bytes[i + 3];
         out[o++] = r;
         out[o++] = g;
         out[o++] = b;
@@ -414,7 +418,7 @@ class _DemoScreenState extends State<DemoScreen> {
       if (data == null) {
         return null;
       }
-      return _bgraToRgb(data);
+      return _streamToFrame(data);
     }
     final controller = _cameraController;
     if (controller == null || !controller.value.isInitialized) {
