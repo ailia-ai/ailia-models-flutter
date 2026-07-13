@@ -360,9 +360,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     });
     try {
       await AiliaLicense.checkAndDownloadLicense();
-      if (_camera.usesMacCamera) {
-        await _camera.startMacStream();
-      }
+      await _camera.startFrameStream();
       switch (widget.model.id) {
         case "yolox":
           await _realtimeYoloX();
@@ -380,9 +378,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     } catch (e) {
       _session.showError(e);
     } finally {
-      if (_camera.usesMacCamera) {
-        await _camera.stopMacStream();
-      }
+      await _camera.stopFrameStream();
       _realtimeActive = false;
       if (mounted) {
         safeSetState(() {});

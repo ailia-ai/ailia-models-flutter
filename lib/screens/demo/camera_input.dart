@@ -65,6 +65,10 @@ class CameraInput extends ChangeNotifier {
   String? macDeviceId;
   CameraImageData? _macLatestFrame;
 
+  // Latest frame of the plugin video stream (Android/iOS realtime).
+  CameraImage? _pluginLatestFrame;
+  bool _pluginStreamActive = false;
+
   String? error;
 
   /// Aspect ratio of the frames actually processed, tracked so the
@@ -86,6 +90,21 @@ class CameraInput extends ChangeNotifier {
       Platform.isMacOS;
 
   bool get usesMacCamera => !kIsWeb && Platform.isMacOS;
+
+  /// Whether realtime frames come from the video stream instead of
+  /// per-frame still captures. Still captures fire the shutter sound on
+  /// every frame (mandatory in some regions), so mobile uses the video
+  /// stream; camera_windows does not implement image streaming.
+  bool get _usesPluginStream =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+  /// Streamed pixel format: iOS delivers BGRA, Android YUV420.
+  static ImageFormatGroup get _streamImageFormat {
+    if (!kIsWeb && Platform.isIOS) {
+      return ImageFormatGroup.bgra8888;
+    }
+    return ImageFormatGroup.yuv420;
+  }
 
   /// Opens the camera. On macOS the CameraMacOSView initializes the
   /// controller itself, so this only refreshes the device list.
@@ -115,6 +134,7 @@ class CameraInput extends ChangeNotifier {
           camera,
           ResolutionPreset.medium,
           enableAudio: false,
+          imageFormatGroup: _streamImageFormat,
         );
         await created.initialize();
         controller = created;
@@ -192,6 +212,7 @@ class CameraInput extends ChangeNotifier {
         pluginCameras[index],
         ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: _streamImageFormat,
       );
       await created.initialize();
       pluginCameraIndex = index;
@@ -299,6 +320,13 @@ class CameraInput extends ChangeNotifier {
     if (plugin == null || !plugin.value.isInitialized) {
       return null;
     }
+    if (_pluginStreamActive) {
+      final image = _pluginLatestFrame;
+      if (image == null) {
+        return null;
+      }
+      return _pluginStreamToFrame(plugin, image);
+    }
     final shot = await plugin.takePicture();
     final bytes = await shot.readAsBytes();
     try {
@@ -326,23 +354,143 @@ class CameraInput extends ChangeNotifier {
         rgbImage.width, rgbImage.height);
   }
 
-  /// Starts the macOS frame stream feeding [grabFrame] during realtime
-  /// inference.
-  Future<void> startMacStream() async {
-    _macLatestFrame = null;
-    await macController?.startImageStream((data) {
-      if (data != null) {
-        _macLatestFrame = data;
-        updateAspectFrom(data.width, data.height);
-      }
-    });
+  /// Converts a streamed plugin frame (BGRA on iOS, YUV420 on Android)
+  /// into an upright RGB frame.
+  CameraFrame? _pluginStreamToFrame(
+      CameraController controller, CameraImage image) {
+    img.Image? rgb;
+    if (image.format.group == ImageFormatGroup.bgra8888) {
+      rgb = _bgraToImage(image);
+    } else if (image.format.group == ImageFormatGroup.yuv420) {
+      rgb = _yuv420ToImage(image);
+    }
+    if (rgb == null) {
+      return null;
+    }
+    final rotation = _streamRotationDegrees(controller);
+    if (rotation != 0) {
+      rgb = img.copyRotate(rgb, angle: rotation);
+    }
+    updateAspectFrom(rgb.width, rgb.height);
+    return CameraFrame(
+        rgb.getBytes(order: img.ChannelOrder.rgb), rgb.width, rgb.height);
   }
 
-  Future<void> stopMacStream() async {
-    try {
-      await macController?.stopImageStream();
-    } catch (_) {
-      // The controller may already be destroyed.
+  /// Clockwise rotation that brings a streamed frame upright. iOS
+  /// rotates the video output to the device orientation on the native
+  /// side; Android streams in sensor orientation.
+  int _streamRotationDegrees(CameraController controller) {
+    if (!Platform.isAndroid) {
+      return 0;
+    }
+    final sensor = controller.description.sensorOrientation;
+    int device;
+    switch (controller.value.deviceOrientation) {
+      case DeviceOrientation.portraitUp:
+        device = 0;
+      case DeviceOrientation.landscapeLeft:
+        device = 90;
+      case DeviceOrientation.portraitDown:
+        device = 180;
+      case DeviceOrientation.landscapeRight:
+        device = 270;
+    }
+    if (controller.description.lensDirection == CameraLensDirection.front) {
+      return (sensor + device) % 360;
+    }
+    return (sensor - device + 360) % 360;
+  }
+
+  img.Image _bgraToImage(CameraImage image) {
+    final plane = image.planes[0];
+    final w = image.width;
+    final h = image.height;
+    final out = Uint8List(w * h * 3);
+    int o = 0;
+    for (int y = 0; y < h; y++) {
+      int i = y * plane.bytesPerRow;
+      for (int x = 0; x < w; x++) {
+        out[o++] = plane.bytes[i + 2];
+        out[o++] = plane.bytes[i + 1];
+        out[o++] = plane.bytes[i];
+        i += 4;
+      }
+    }
+    return img.Image.fromBytes(
+        width: w, height: h, bytes: out.buffer, numChannels: 3);
+  }
+
+  img.Image _yuv420ToImage(CameraImage image) {
+    final w = image.width;
+    final h = image.height;
+    final yPlane = image.planes[0];
+    final uPlane = image.planes[1];
+    final vPlane = image.planes[2];
+    final uvPixelStride = uPlane.bytesPerPixel ?? 1;
+    final out = Uint8List(w * h * 3);
+    int o = 0;
+    for (int y = 0; y < h; y++) {
+      final yRow = y * yPlane.bytesPerRow;
+      final uvRow = (y >> 1) * uPlane.bytesPerRow;
+      for (int x = 0; x < w; x++) {
+        final yp = yPlane.bytes[yRow + x];
+        final uvIndex = uvRow + (x >> 1) * uvPixelStride;
+        final up = uPlane.bytes[uvIndex] - 128;
+        final vp = vPlane.bytes[uvIndex] - 128;
+        // BT.601 YUV to RGB in fixed point.
+        final r = yp + ((1436 * vp) >> 10);
+        final g = yp - ((352 * up) >> 10) - ((731 * vp) >> 10);
+        final b = yp + ((1815 * up) >> 10);
+        out[o++] = r < 0 ? 0 : (r > 255 ? 255 : r);
+        out[o++] = g < 0 ? 0 : (g > 255 ? 255 : g);
+        out[o++] = b < 0 ? 0 : (b > 255 ? 255 : b);
+      }
+    }
+    return img.Image.fromBytes(
+        width: w, height: h, bytes: out.buffer, numChannels: 3);
+  }
+
+  /// Starts streaming frames into [grabFrame] for realtime inference.
+  /// Uses the video stream where available (no per-frame shutter
+  /// sound); on other platforms [grabFrame] falls back to still
+  /// captures.
+  Future<void> startFrameStream() async {
+    if (usesMacCamera) {
+      _macLatestFrame = null;
+      await macController?.startImageStream((data) {
+        if (data != null) {
+          _macLatestFrame = data;
+          updateAspectFrom(data.width, data.height);
+        }
+      });
+      return;
+    }
+    if (_usesPluginStream && controller != null) {
+      _pluginLatestFrame = null;
+      await controller!.startImageStream((image) {
+        _pluginLatestFrame = image;
+      });
+      _pluginStreamActive = true;
+    }
+  }
+
+  Future<void> stopFrameStream() async {
+    if (usesMacCamera) {
+      try {
+        await macController?.stopImageStream();
+      } catch (_) {
+        // The controller may already be destroyed.
+      }
+      return;
+    }
+    if (_pluginStreamActive) {
+      _pluginStreamActive = false;
+      _pluginLatestFrame = null;
+      try {
+        await controller?.stopImageStream();
+      } catch (_) {
+        // The controller may already be disposed.
+      }
     }
   }
 
