@@ -14,7 +14,7 @@ A model library for flutter.
 ## Requirements
 
 - flutter 3.44.6
-- Android SDK 2025.2.2
+- Android Studio 2025.2.2
 
 ## Install and Run
 
