@@ -619,10 +619,14 @@ class _DemoScreenState extends State<DemoScreen> {
           return;
         }
         final maskUiImage = await imageToUiImage(maskImage);
+        final frameImage = await _frameToUiImage(frame);
         if (!mounted) {
           return;
         }
         setState(() {
+          // Show the processed frame with its mask so the result never
+          // lags behind the live preview.
+          _rtFrameImage = frameImage;
           _rtOverlayImage = maskUiImage;
           predict_result = "${endTime - startTime} ms per frame";
         });
