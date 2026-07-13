@@ -143,6 +143,12 @@ class _DemoScreenState extends State<DemoScreen> {
 
   final ScrollController _scrollController = ScrollController();
 
+  // Camera device selection
+  List<CameraMacOSDevice> _macCameraDevices = [];
+  String? _macCameraDeviceId;
+  List<CameraDescription> _pluginCameras = [];
+  int _pluginCameraIndex = 0;
+
   // Realtime camera inference state
   bool _realtimeActive = false;
   List<AiliaDetectorObject> _rtBoxes = [];
@@ -338,6 +344,7 @@ class _DemoScreenState extends State<DemoScreen> {
       });
       if (_usesMacCamera) {
         // CameraMacOSView initializes the controller itself.
+        _listMacCameras();
         return;
       }
       try {
@@ -351,6 +358,8 @@ class _DemoScreenState extends State<DemoScreen> {
             (c) => !c.name.toUpperCase().contains('IR'),
             orElse: () => cameras.first,
           );
+          _pluginCameras = cameras;
+          _pluginCameraIndex = cameras.indexOf(camera);
           final controller = CameraController(
             camera,
             ResolutionPreset.medium,
@@ -548,6 +557,41 @@ class _DemoScreenState extends State<DemoScreen> {
         _cameraAspect = aspect;
       });
     }
+  }
+
+  Future<void> _listMacCameras() async {
+    try {
+      final devices = await CameraMacOSPlatform.instance
+          .listDevices(deviceType: CameraMacOSDeviceType.video);
+      _safeSetState(() {
+        _macCameraDevices = devices;
+      });
+    } catch (_) {
+      // The default device keeps working without the selector.
+    }
+  }
+
+  Future<void> _selectPluginCamera(int index) async {
+    if (index == _pluginCameraIndex && _cameraController != null) {
+      return;
+    }
+    final old = _cameraController;
+    _cameraController = null;
+    await old?.dispose();
+    try {
+      final controller = CameraController(
+        _pluginCameras[index],
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+      await controller.initialize();
+      _pluginCameraIndex = index;
+      _cameraController = controller;
+      _cameraAspect = controller.value.aspectRatio;
+    } catch (e) {
+      _cameraError = 'Camera error: $e';
+    }
+    _safeSetState(() {});
   }
 
   Future<void> _toggleRealtime() async {
@@ -2127,21 +2171,30 @@ class _DemoScreenState extends State<DemoScreen> {
 
   Widget _buildInputSourceSelector() {
     if (_supportsCamera) {
-      return SegmentedButton<InputSource>(
-        segments: const [
-          ButtonSegment(
-              value: InputSource.sample,
-              label: Text('Image'),
-              icon: Icon(Icons.image)),
-          ButtonSegment(
-              value: InputSource.camera,
-              label: Text('Web Camera'),
-              icon: Icon(Icons.videocam)),
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SegmentedButton<InputSource>(
+            segments: const [
+              ButtonSegment(
+                  value: InputSource.sample,
+                  label: Text('Image'),
+                  icon: Icon(Icons.image)),
+              ButtonSegment(
+                  value: InputSource.camera,
+                  label: Text('Web Camera'),
+                  icon: Icon(Icons.videocam)),
+            ],
+            selected: {_inputSource},
+            onSelectionChanged: (selection) {
+              _switchInputSource(selection.first);
+            },
+          ),
+          if (_inputSource == InputSource.camera) ...[
+            const SizedBox(width: 12),
+            _buildCameraDeviceSelector(),
+          ],
         ],
-        selected: {_inputSource},
-        onSelectionChanged: (selection) {
-          _switchInputSource(selection.first);
-        },
       );
     }
     if (_supportsMic) {
@@ -2199,6 +2252,60 @@ class _DemoScreenState extends State<DemoScreen> {
     return const SizedBox.shrink();
   }
 
+  Widget _buildCameraDeviceSelector() {
+    if (_usesMacCamera) {
+      if (_macCameraDevices.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      return DropdownButton<String>(
+        // null means the default device, which is the first one.
+        value: _macCameraDeviceId ?? _macCameraDevices.first.deviceId,
+        underline: const SizedBox.shrink(),
+        // Switching devices mid-run would restart the capture session.
+        onChanged: _realtimeActive
+            ? null
+            : (value) {
+                if (value == null) {
+                  return;
+                }
+                _safeSetState(() {
+                  _macCameraDeviceId = value;
+                  _macLatestFrame = null;
+                });
+              },
+        items: [
+          for (final device in _macCameraDevices)
+            DropdownMenuItem<String>(
+              value: device.deviceId,
+              child: Text(device.localizedName ?? device.deviceId),
+            ),
+        ],
+      );
+    }
+    if (_pluginCameras.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return DropdownButton<int>(
+      value: _pluginCameraIndex,
+      underline: const SizedBox.shrink(),
+      onChanged: _realtimeActive
+          ? null
+          : (value) {
+              if (value == null) {
+                return;
+              }
+              _selectPluginCamera(value);
+            },
+      items: [
+        for (int i = 0; i < _pluginCameras.length; i++)
+          DropdownMenuItem<int>(
+            value: i,
+            child: Text(_pluginCameras[i].name),
+          ),
+      ],
+    );
+  }
+
   Widget _buildCameraPreview() {
     if (!_supportsCamera || _inputSource != InputSource.camera) {
       return const SizedBox.shrink();
@@ -2213,6 +2320,8 @@ class _DemoScreenState extends State<DemoScreen> {
     Widget preview;
     if (_usesMacCamera) {
       preview = CameraMacOSView(
+        key: ValueKey(_macCameraDeviceId),
+        deviceId: _macCameraDeviceId,
         cameraMode: CameraMacOSMode.photo,
         pictureFormat: PictureFormat.jpg,
         resolution: PictureResolution.medium,

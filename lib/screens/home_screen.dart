@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../backend_state.dart';
 import '../model_catalog.dart';
 import '../utils/download_model.dart';
 import 'demo_screen.dart';
@@ -95,7 +94,6 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('ailia MODELS Flutter'),
-        actions: const [BackendSelector()],
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
