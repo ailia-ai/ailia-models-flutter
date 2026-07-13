@@ -369,7 +369,7 @@ class _DemoScreenState extends State<DemoScreen> {
           );
           await controller.initialize();
           _cameraController = controller;
-          _cameraAspect = controller.value.aspectRatio;
+          _cameraAspect = _pluginDisplayAspect(controller);
         }
       } catch (e) {
         _cameraController = null;
@@ -543,6 +543,10 @@ class _DemoScreenState extends State<DemoScreen> {
     if (decoded == null) {
       return null;
     }
+    // Android stores the capture rotation in EXIF, which decodeImage does
+    // not apply. Bake it so the frame (and the aspect tracked from it) is
+    // upright like the preview.
+    decoded = img.bakeOrientation(decoded);
     if (Platform.isWindows) {
       // Match the preview, which camera_windows always mirrors.
       decoded = img.flipHorizontal(decoded);
@@ -591,6 +595,25 @@ class _DemoScreenState extends State<DemoScreen> {
     }
   }
 
+  /// Aspect ratio of the camera preview as displayed. The camera plugin
+  /// reports the sensor aspect (landscape); on phones the preview is
+  /// rotated to the device orientation, so the displayed box must use
+  /// the inverse while the device is held in portrait. Uses the same
+  /// orientation resolution as CameraPreview so the box always matches
+  /// what the plugin renders.
+  double _pluginDisplayAspect(CameraController controller) {
+    final aspect = controller.value.aspectRatio;
+    if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) {
+      return aspect;
+    }
+    final orientation = controller.value.previewPauseOrientation ??
+        controller.value.lockedCaptureOrientation ??
+        controller.value.deviceOrientation;
+    final landscape = orientation == DeviceOrientation.landscapeLeft ||
+        orientation == DeviceOrientation.landscapeRight;
+    return landscape ? aspect : 1 / aspect;
+  }
+
   Future<void> _listMacCameras() async {
     try {
       final devices = await CameraMacOSPlatform.instance
@@ -632,7 +655,7 @@ class _DemoScreenState extends State<DemoScreen> {
       await controller.initialize();
       _pluginCameraIndex = index;
       _cameraController = controller;
-      _cameraAspect = controller.value.aspectRatio;
+      _cameraAspect = _pluginDisplayAspect(controller);
     } catch (e) {
       _cameraError = 'Camera error: $e';
     }
@@ -2427,10 +2450,10 @@ class _DemoScreenState extends State<DemoScreen> {
     // preview on the captured frame while the camera keeps running
     // underneath. Tap the frozen image to return to the live view.
     final frozen = !_realtimeActive && _capturedBytes != null;
-    return ConstrainedBox(
+    Widget buildWithAspect(double aspect) => ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 480),
       child: AspectRatio(
-        aspectRatio: _cameraAspect,
+        aspectRatio: aspect,
         child: LayoutBuilder(builder: (context, constraints) {
           final stack = Stack(
             fit: StackFit.expand,
@@ -2481,6 +2504,22 @@ class _DemoScreenState extends State<DemoScreen> {
           );
         }),
       ),
+    );
+    final controller = _cameraController;
+    if (_usesMacCamera || controller == null) {
+      return buildWithAspect(_cameraAspect);
+    }
+    // Follow the controller so the box tracks camera switches and device
+    // rotation. While realtime inference paints captured frames over the
+    // preview, keep the tracked frame aspect instead (the photo aspect can
+    // differ from the preview aspect).
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, _, __) {
+        final aspect =
+            _realtimeActive ? _cameraAspect : _pluginDisplayAspect(controller);
+        return buildWithAspect(aspect);
+      },
     );
   }
 
