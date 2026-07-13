@@ -23,6 +23,10 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
   final DemoSession _session = DemoSession();
   final WaveformController _waveform = WaveformController();
 
+  // Kept open across runs so the second and later syntheses skip the
+  // model load and SetReference.
+  final TextToSpeech _tts = TextToSpeech();
+
   // Text spoken by the text-to-speech demos.
   late final TextEditingController _textController =
       TextEditingController(text: widget.model.defaultInputText ?? '');
@@ -39,6 +43,8 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
         return TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN;
       case "gpt-sovits-zh":
         return TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH;
+      case "gpt-sovits-v2pro-distill-ja":
+        return TextToSpeech.MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_JA;
       default:
         return TextToSpeech.MODEL_TYPE_TACOTRON2;
     }
@@ -46,6 +52,7 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
 
   @override
   void dispose() {
+    _tts.close();
     _textController.dispose();
     _waveform.dispose();
     _session.dispose();
@@ -61,55 +68,23 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
     return _session.run(_runTextToSpeech);
   }
 
-  /// Runs one of the text-to-speech demos. The four models share the
-  /// same download/synthesize/play flow and differ only in their model
-  /// files and G2P dictionaries.
+  /// Runs one of the text-to-speech demos. The models share the same
+  /// download/synthesize/play flow; TextToSpeech resolves the model
+  /// files and G2P dictionaries from the model type and keeps the
+  /// instance open so later runs skip the load and SetReference.
   Future<void> _runTextToSpeech() async {
     final modelType = _modelType;
-    TextToSpeech textToSpeech = TextToSpeech();
-    List<String> modelList = textToSpeech.getModelList(modelType);
+    List<String> modelList = _tts.getModelList(modelType);
     if (!await _session.downloadModelList(modelList)) {
       return;
     }
 
-    final tacotron2 = modelType == TextToSpeech.MODEL_TYPE_TACOTRON2;
-    String encoderFile =
-        await getModelPath(tacotron2 ? "encoder.onnx" : "t2s_encoder.onnx");
-    String decoderFile =
-        await getModelPath(tacotron2 ? "decoder_iter.onnx" : "t2s_fsdec.onnx");
-    String postnetFile =
-        await getModelPath(tacotron2 ? "postnet.onnx" : "t2s_sdec.opt.onnx");
-    String waveglowFile =
-        await getModelPath(tacotron2 ? "waveglow.onnx" : "vits.onnx");
-    String? sslFile = tacotron2 ? null : await getModelPath("cnhubert.onnx");
-
-    String dicFolderOpenJtalk =
-        await getModelPath("open_jtalk_dic_utf_8-1.11/");
-    // The English and Chinese G2P dictionary files are downloaded flat
-    // into the model root.
-    String? dicFolderEn = modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN ||
-            modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH
-        ? await getModelPath("/")
-        : null;
-    String? dicFolderCn = modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH
-        ? await getModelPath("/")
-        : null;
     String targetText = _textController.text.trim();
     String outputPath = await getModelPath("temp$_runCounter.wav");
 
     int startTime = DateTime.now().millisecondsSinceEpoch;
-    if (!await _runTtsGeneration(() => textToSpeech.inference(
-        targetText,
-        outputPath,
-        encoderFile,
-        decoderFile,
-        postnetFile,
-        waveglowFile,
-        sslFile,
-        dicFolderOpenJtalk,
-        dicFolderEn,
-        modelType,
-        dicFolderG2PCn: dicFolderCn))) {
+    if (!await _runTtsGeneration(
+        () => _tts.inference(targetText, outputPath, modelType))) {
       return;
     }
     int endTime = DateTime.now().millisecondsSinceEpoch;

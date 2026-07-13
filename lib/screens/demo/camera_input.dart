@@ -385,6 +385,7 @@ class CameraPreviewView extends StatelessWidget {
     this.realtimeActive = false,
     this.overlay,
     this.onTapNormalized,
+    this.cornerLabel,
   });
 
   final CameraInput input;
@@ -400,6 +401,10 @@ class CameraPreviewView extends StatelessWidget {
   /// Tap handler in normalized (0..1) coordinates; used by SAM2 to
   /// move the segmentation point.
   final void Function(Offset normalized)? onTapNormalized;
+
+  /// Short status text (e.g. the FPS) shown at the top right corner of
+  /// the preview.
+  final String? cornerLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -461,6 +466,24 @@ class CameraPreviewView extends StatelessWidget {
                       ),
                     ),
                   if (!frozen && overlay != null) overlay!,
+                  if (!frozen && cornerLabel != null)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          cornerLabel!,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                    ),
                 ],
               );
               if (frozen || onTapNormalized == null) {

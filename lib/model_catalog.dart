@@ -52,9 +52,11 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing',
       ModelInputKind.text),
   ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing',
-      ModelInputKind.text, defaultInputText: 'Hello world.'),
+      ModelInputKind.text,
+      defaultInputText: 'Hello world.'),
   ModelInfo('fugumt-ja-en', 'FuguMT JA-EN', 'Natural Language Processing',
-      ModelInputKind.text, defaultInputText: 'こんにちは世界。'),
+      ModelInputKind.text,
+      defaultInputText: 'こんにちは世界。'),
   ModelInfo('tacotron2', 'Tacotron2', 'Text To Speech', ModelInputKind.text,
       defaultInputText: 'Hello world.'),
   ModelInfo(
@@ -66,6 +68,9 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'gpt-sovits-zh', 'GPT-SoVITS ZH', 'Text To Speech', ModelInputKind.text,
       defaultInputText: '你好世界。'),
+  ModelInfo('gpt-sovits-v2pro-distill-ja', 'GPT-SoVITS V2Pro Distill JA',
+      'Text To Speech', ModelInputKind.text,
+      defaultInputText: 'こんにちは。今日はいい天気ですね。'),
   ModelInfo(
       'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
   ModelInfo(

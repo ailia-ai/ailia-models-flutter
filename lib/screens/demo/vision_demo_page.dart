@@ -48,6 +48,11 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   ui.Image? _rtFrameImage;
   String _rtLabel = '';
 
+  // Completion times of recent frames, for the FPS shown at the top
+  // right of the preview.
+  final List<int> _fpsTimes = [];
+  double _fps = 0;
+
   // SAM2 segmentation point (normalized 0..1); movable by tapping the
   // image or the camera preview.
   Offset _sam2Point = const Offset(0.5, 0.5);
@@ -96,6 +101,21 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     _rtOverlayImage = null;
     _rtFrameImage = null;
     _rtLabel = '';
+    _fpsTimes.clear();
+    _fps = 0;
+  }
+
+  /// Updates the FPS over a sliding window of recent frames.
+  void _tickFps() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _fpsTimes.add(now);
+    while (_fpsTimes.length > 30 || now - _fpsTimes.first > 3000) {
+      _fpsTimes.removeAt(0);
+    }
+    if (_fpsTimes.length >= 2) {
+      _fps = (_fpsTimes.length - 1) * 1000 / (_fpsTimes.last - _fpsTimes.first);
+      safeSetState(() {});
+    }
   }
 
   Future<void> _switchSource(bool useCamera) async {
@@ -381,6 +401,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         continue;
       }
       await onFrame(frame);
+      _tickFps();
       // Let the UI breathe between inferences.
       await Future.delayed(const Duration(milliseconds: 16));
     }
@@ -611,6 +632,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
           CameraPreviewView(
             input: _camera,
             realtimeActive: _realtimeActive,
+            cornerLabel: _realtimeActive && _fps > 0
+                ? '${_fps.toStringAsFixed(1)} FPS'
+                : null,
             overlay: CustomPaint(
               painter: CameraOverlayPainter(
                 boxes: _rtBoxes,
