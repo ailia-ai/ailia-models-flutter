@@ -1690,9 +1690,10 @@ class _DemoScreenState extends State<DemoScreen> {
       double screenHeight = MediaQuery.of(context).size.height;
       double height = screenHeight * 0.45;
       double width = height * image!.width / image!.height;
-      return SizedBox(
+      return Container(
         width: width,
         height: height,
+        margin: const EdgeInsets.only(top: 12),
         child: Stack(
           fit: StackFit.expand,
           children: [
