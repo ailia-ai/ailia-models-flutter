@@ -1309,7 +1309,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String outputPath = await getModelPath("temp$_runCounter.wav");
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
-      await textToSpeech.inference(
+      if (!await _runTtsGeneration(() => textToSpeech.inference(
           targetText,
           outputPath,
           encoderFile,
@@ -1319,7 +1319,9 @@ class _DemoScreenState extends State<DemoScreen> {
           sslFile,
           dicFolder,
           null,
-          TextToSpeech.MODEL_TYPE_TACOTRON2);
+          TextToSpeech.MODEL_TYPE_TACOTRON2))) {
+        return;
+      }
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
@@ -1351,7 +1353,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String outputPath = await getModelPath("temp$_runCounter.wav");
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
-      await textToSpeech.inference(
+      if (!await _runTtsGeneration(() => textToSpeech.inference(
           targetText,
           outputPath,
           encoderFile,
@@ -1361,7 +1363,9 @@ class _DemoScreenState extends State<DemoScreen> {
           sslFile,
           dicFolder,
           null,
-          TextToSpeech.MODEL_TYPE_GPT_SOVITS_JA);
+          TextToSpeech.MODEL_TYPE_GPT_SOVITS_JA))) {
+        return;
+      }
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
@@ -1395,7 +1399,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String outputPath = await getModelPath("temp$_runCounter.wav");
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
-      await textToSpeech.inference(
+      if (!await _runTtsGeneration(() => textToSpeech.inference(
           targetText,
           outputPath,
           encoderFile,
@@ -1405,7 +1409,9 @@ class _DemoScreenState extends State<DemoScreen> {
           sslFile,
           dicFolderOpenJtalk,
           dicFolderEn,
-          TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN);
+          TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN))) {
+        return;
+      }
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
@@ -1442,7 +1448,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String outputPath = await getModelPath("temp$_runCounter.wav");
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
-      await textToSpeech.inference(
+      if (!await _runTtsGeneration(() => textToSpeech.inference(
           targetText,
           outputPath,
           encoderFile,
@@ -1453,7 +1459,9 @@ class _DemoScreenState extends State<DemoScreen> {
           dicFolderOpenJtalk,
           dicFolderEn,
           TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH,
-          dicFolderG2PCn: dicFolderCn);
+          dicFolderG2PCn: dicFolderCn))) {
+        return;
+      }
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
@@ -1877,6 +1885,26 @@ class _DemoScreenState extends State<DemoScreen> {
         ],
       ),
     );
+  }
+
+  /// Shows a generating status while [generate] runs. Returns false if
+  /// the generation failed. The status text is given one frame to render
+  /// because the synthesis itself blocks the UI isolate.
+  Future<bool> _runTtsGeneration(Future<void> Function() generate) async {
+    setState(() {
+      _status = "Generating speech...";
+    });
+    await Future.delayed(const Duration(milliseconds: 50));
+    try {
+      await generate();
+    } catch (e) {
+      _showError(e);
+      return false;
+    }
+    setState(() {
+      _status = "";
+    });
+    return true;
   }
 
   Future<void> _replayTts() async {
