@@ -18,12 +18,22 @@ class BackendState {
   List<String> _llmBackendList = [];
   final ValueNotifier<String> selectedLlmBackend = ValueNotifier<String>('');
 
+  /// The BLAS-accelerated CPU backend (CPU-AppleAccelerate on macOS,
+  /// CPU-IntelMKL on Windows, ...). The Dart wrapper does not expose the
+  /// environment type, so match by name.
+  static bool _isBlas(AiliaEnvironment e) =>
+      e.name.contains('BLAS') ||
+      e.name.contains('AppleAccelerate') ||
+      e.name.contains('IntelMKL');
+
   List<AiliaEnvironment> get envList {
     if (_envList.isEmpty) {
       _envList = AiliaModel.getEnvironmentList();
-      if (_envList.isNotEmpty &&
-          !_envList.any((e) => e.id == selectedEnvId.value)) {
-        selectedEnvId.value = _envList.first.id;
+      if (_envList.isNotEmpty) {
+        // Default to the BLAS backend when available; it is much faster
+        // than the plain CPU environment.
+        selectedEnvId.value =
+            _envList.firstWhere(_isBlas, orElse: () => _envList.first).id;
       }
     }
     return _envList;
