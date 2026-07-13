@@ -122,6 +122,10 @@ class _DemoScreenState extends State<DemoScreen> {
   final TextEditingController _chatTextController = TextEditingController();
   String _systemPrompt = 'あなたは親切なアシスタントです。';
 
+  // True while a one-shot demo run is in flight (Run button shows
+  // "Processing...").
+  bool _processing = false;
+
   // Progress / error display, separated from the inference result text.
   String _status = '';
   double? _downloadProgress;
@@ -132,8 +136,7 @@ class _DemoScreenState extends State<DemoScreen> {
   DateTime? _recStart;
 
   // macOS mic_stream only supports 48kHz; other platforms use 44.1kHz.
-  final int _micSampleRate =
-      !kIsWeb && Platform.isMacOS ? 48000 : 44100;
+  final int _micSampleRate = !kIsWeb && Platform.isMacOS ? 48000 : 44100;
 
   // Last synthesized audio, replayable without re-synthesizing.
   String? _lastTtsPath;
@@ -827,31 +830,36 @@ class _DemoScreenState extends State<DemoScreen> {
     });
   }
 
-  void downloadModelFromModelList(
-      int downloadCnt, List<String> modelList, Function callback) {
-    String filename = basename(modelList[downloadCnt + 1]);
-    String url =
-        "https://storage.googleapis.com/ailia-models/${modelList[downloadCnt + 0]}/$filename";
+  /// Downloads a (remote folder, local path) pair list as produced by
+  /// the model classes' getModelList(). Returns false (and shows an
+  /// error) when a download fails.
+  Future<bool> _downloadModelList(List<String> modelList) async {
+    for (int i = 0; i < modelList.length; i += 2) {
+      final localPath = modelList[i + 1];
+      final filename = basename(localPath);
+      final url =
+          "https://storage.googleapis.com/ailia-models/${modelList[i]}/$filename";
+      _safeSetState(() {
+        _errorText = null;
+        _status = "Downloading $localPath";
+        _downloadProgress = null;
+      });
+      final file = await downloadModel(
+          url,
+          localPath,
+          null,
+          (int downloaded, int total) =>
+              _displayDownloadProgress(downloaded, total, filename: localPath));
+      if (file == null) {
+        _showError("Download failed: $localPath");
+        return false;
+      }
+    }
     _safeSetState(() {
-      _errorText = null;
-      _status = "Downloading ${modelList[downloadCnt + 1]}";
+      _status = "";
       _downloadProgress = null;
     });
-    downloadModel(url, modelList[downloadCnt + 1], (file) {
-      downloadCnt = downloadCnt + 2;
-      if (downloadCnt >= modelList.length) {
-        _safeSetState(() {
-          _status = "";
-          _downloadProgress = null;
-        });
-        callback();
-      } else {
-        downloadModelFromModelList(downloadCnt, modelList, callback);
-      }
-    }, (int downloaded, int total) {
-      _displayDownloadProgress(downloaded, total,
-          filename: modelList[downloadCnt + 1]);
-    });
+    return true;
   }
 
 // ---------------------------------------------------------------------
@@ -878,69 +886,77 @@ class _DemoScreenState extends State<DemoScreen> {
       return;
     }
 
-    switch (widget.model.id) {
-      case "sam2":
-        _ailiaImageSegmentationSam2();
-        break;
-      case "u2net":
-        _ailiaBackgroundRemovalU2Net();
-        break;
-      case "resnet18":
-        _ailiaImageClassificationResNet18();
-        break;
-      case "whisper_tiny":
-      case "whisper_small":
-      case "whisper_medium":
-      case "whisper_large_v3_turbo":
-      case "sensevoice_small":
-        if (_inputSource == InputSource.mic) {
-          _ailiaAudioProcessingWhisperStreaming(
-              widget.model.id, _virtualMemory);
-        } else {
-          _ailiaAudioProcessingWhisper(widget.model.id, _virtualMemory);
-        }
-        break;
-      case "multilingual-e5":
-        _ailiaNaturalLanguageProcessingMultilingualE5();
-        break;
-      case "yolox":
-        _ailiaObjectDetectionYoloX();
-        break;
-      case "fugumt-en-ja":
-        _ailiaNaturalLanguageProcessingFuguMTEnJa();
-        break;
-      case "fugumt-ja-en":
-        _ailiaNaturalLanguageProcessingFuguMTJaEn();
-        break;
-      case "tacotron2":
-        _runTextToSpeech(TextToSpeech.MODEL_TYPE_TACOTRON2);
-        break;
-      case "gpt-sovits-ja":
-        _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_JA);
-        break;
-      case "gpt-sovits-en":
-        _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN);
-        break;
-      case "gpt-sovits-zh":
-        _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH);
-        break;
-      case "gemma2":
-      case "gemma4-e2b":
-        try {
+    _safeSetState(() {
+      _processing = true;
+    });
+    try {
+      switch (widget.model.id) {
+        case "sam2":
+          await _ailiaImageSegmentationSam2();
+          break;
+        case "u2net":
+          await _ailiaBackgroundRemovalU2Net();
+          break;
+        case "resnet18":
+          await _ailiaImageClassificationResNet18();
+          break;
+        case "whisper_tiny":
+        case "whisper_small":
+        case "whisper_medium":
+        case "whisper_large_v3_turbo":
+        case "sensevoice_small":
+          if (_inputSource == InputSource.mic) {
+            await _ailiaAudioProcessingWhisperStreaming(
+                widget.model.id, _virtualMemory);
+          } else {
+            await _ailiaAudioProcessingWhisper(widget.model.id, _virtualMemory);
+          }
+          break;
+        case "multilingual-e5":
+          await _ailiaNaturalLanguageProcessingMultilingualE5();
+          break;
+        case "yolox":
+          await _ailiaObjectDetectionYoloX();
+          break;
+        case "fugumt-en-ja":
+          await _ailiaNaturalLanguageProcessingFuguMTEnJa();
+          break;
+        case "fugumt-ja-en":
+          await _ailiaNaturalLanguageProcessingFuguMTJaEn();
+          break;
+        case "tacotron2":
+          await _runTextToSpeech(TextToSpeech.MODEL_TYPE_TACOTRON2);
+          break;
+        case "gpt-sovits-ja":
+          await _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_JA);
+          break;
+        case "gpt-sovits-en":
+          await _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN);
+          break;
+        case "gpt-sovits-zh":
+          await _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH);
+          break;
+        case "gemma2":
+        case "gemma4-e2b":
           await _ensureChatModel();
-        } catch (e) {
-          _showError(e);
-        }
-        break;
-      case "gemma3-multimodal":
-        _ailiaLargeLanguageModelGemma3Multimodal();
-        break;
-      default:
-        throw (Exception("Unknown model type"));
+          break;
+        case "gemma3-multimodal":
+          await _ailiaLargeLanguageModelGemma3Multimodal();
+          break;
+        default:
+          throw (Exception("Unknown model type"));
+      }
+    } catch (e) {
+      _showError(e);
+    } finally {
+      _processing = false;
+      if (mounted) {
+        _safeSetState(() {});
+      }
     }
   }
 
-  void _ailiaImageSegmentationSam2() async {
+  Future<void> _ailiaImageSegmentationSam2() async {
     _sam2Still?.close();
     _sam2Still = null;
     _sam2StillInput = null;
@@ -1019,15 +1035,14 @@ class _DemoScreenState extends State<DemoScreen> {
       final maskUiImage = await imageToUiImage(result);
       _safeSetState(() {
         image = maskUiImage;
-        predict_result =
-            "mask decoder : ${(endTime - startTime) / 1000} sec";
+        predict_result = "mask decoder : ${(endTime - startTime) / 1000} sec";
       });
     } finally {
       _sam2Busy = false;
     }
   }
 
-  void _ailiaBackgroundRemovalU2Net() async {
+  Future<void> _ailiaBackgroundRemovalU2Net() async {
     image = await _loadInputUiImage(widget.model.sampleAsset!);
     _safeSetState(() {});
 
@@ -1058,7 +1073,7 @@ class _DemoScreenState extends State<DemoScreen> {
     u2net.close();
   }
 
-  void _ailiaImageClassificationResNet18() async {
+  Future<void> _ailiaImageClassificationResNet18() async {
     image = await _loadInputUiImage(widget.model.sampleAsset!);
     _safeSetState(() {});
 
@@ -1165,7 +1180,7 @@ class _DemoScreenState extends State<DemoScreen> {
     whisper_streaming.send(result, _micSampleRate);
   }
 
-  void _ailiaAudioProcessingWhisper(
+  Future<void> _ailiaAudioProcessingWhisper(
       String modelType, bool virtualMemory) async {
     ByteData data = await rootBundle.load("assets/demo.wav");
     final wav = await Wav.read(data.buffer.asUint8List());
@@ -1174,125 +1189,120 @@ class _DemoScreenState extends State<DemoScreen> {
     _safeSetState(() {
       _transcript.clear();
     });
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
-      File vad_file = File(await getModelPath(modelList[1]));
-      File onnx_encoder_file = File(await getModelPath(modelList[3]));
-      File onnx_decoder_file = File(await getModelPath(modelList[5]));
-      int startTime = DateTime.now().millisecondsSinceEpoch;
-      List<SpeechText> texts = await whisper.transcribe(wav, onnx_encoder_file,
-          onnx_decoder_file, vad_file, selectedEnvId, modelType, virtualMemory);
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      _safeSetState(() {
-        for (int i = 0; i < texts.length; i++) {
-          _transcript.add(_formatTranscriptLine(texts[i]));
-        }
-        predict_result =
-            "processing time : ${(endTime - startTime) / 1000} sec for ${(wav.channels[0].length / wav.samplesPerSecond)} sec audio.";
-      });
-      _scrollToBottom();
+    if (!await _downloadModelList(modelList)) {
+      return;
+    }
+    File vad_file = File(await getModelPath(modelList[1]));
+    File onnx_encoder_file = File(await getModelPath(modelList[3]));
+    File onnx_decoder_file = File(await getModelPath(modelList[5]));
+    int startTime = DateTime.now().millisecondsSinceEpoch;
+    List<SpeechText> texts = await whisper.transcribe(wav, onnx_encoder_file,
+        onnx_decoder_file, vad_file, selectedEnvId, modelType, virtualMemory);
+    int endTime = DateTime.now().millisecondsSinceEpoch;
+    _safeSetState(() {
+      for (int i = 0; i < texts.length; i++) {
+        _transcript.add(_formatTranscriptLine(texts[i]));
+      }
+      predict_result =
+          "processing time : ${(endTime - startTime) / 1000} sec for ${(wav.channels[0].length / wav.samplesPerSecond)} sec audio.";
     });
+    _scrollToBottom();
   }
 
-  void _ailiaAudioProcessingWhisperStreaming(
+  Future<void> _ailiaAudioProcessingWhisperStreaming(
       String modelType, bool virtualMemory) async {
     List<String> modelList = whisper.getModelList(modelType);
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
+    if (!await _downloadModelList(modelList)) {
+      return;
+    }
 
-      _safeSetState(() {
-        predict_result = "Please speak to mic.";
-      });
+    _safeSetState(() {
+      predict_result = "Please speak to mic.";
+    });
 
-      File vad_file = File(await getModelPath(modelList[1]));
-      File onnx_encoder_file = File(await getModelPath(modelList[3]));
-      File onnx_decoder_file = File(await getModelPath(modelList[5]));
+    File vad_file = File(await getModelPath(modelList[1]));
+    File onnx_encoder_file = File(await getModelPath(modelList[3]));
+    File onnx_decoder_file = File(await getModelPath(modelList[5]));
 
-      // The Stop button handles termination via _stopSpeechRecognition;
-      // ignore a Run that lands while stopping or already recording.
-      if (terminating || listener != null) {
-        return;
-      }
+    // The Stop button handles termination via _stopSpeechRecognition;
+    // ignore a Run that lands while stopping or already recording.
+    if (terminating || listener != null) {
+      return;
+    }
 
-      _safeSetState(() {
-        _transcript.clear();
-      });
+    _safeSetState(() {
+      _transcript.clear();
+    });
 
-      String lang = "ja";
-      await whisper_streaming.open(
-          onnx_encoder_file,
-          onnx_decoder_file,
-          vad_file,
-          selectedEnvId,
-          modelType,
-          lang,
-          virtualMemory,
-          _liveTranscribe,
-          _intermediateCallback,
-          _messageCallback,
-          _finishCallback);
-      if (Platform.isIOS) {
-        await Permission.microphone.request();
-      }
+    String lang = "ja";
+    await whisper_streaming.open(
+        onnx_encoder_file,
+        onnx_decoder_file,
+        vad_file,
+        selectedEnvId,
+        modelType,
+        lang,
+        virtualMemory,
+        _liveTranscribe,
+        _intermediateCallback,
+        _messageCallback,
+        _finishCallback);
+    if (Platform.isIOS) {
+      await Permission.microphone.request();
+    }
 
-      try {
-        stream = MicStream.microphone(
-            audioSource: AudioSource.DEFAULT,
-            sampleRate: _micSampleRate,
-            channelConfig: ChannelConfig.CHANNEL_IN_MONO,
-            audioFormat: AudioFormat.ENCODING_PCM_16BIT);
-        listener = stream!.listen(_processSamples);
-        _recStart = DateTime.now();
-        // Update the Run button into a Stop button.
-        _safeSetState(() {});
-      } catch (e) {
-        _showError("Microphone is not available: $e");
-      }
+    try {
+      stream = MicStream.microphone(
+          audioSource: AudioSource.DEFAULT,
+          sampleRate: _micSampleRate,
+          channelConfig: ChannelConfig.CHANNEL_IN_MONO,
+          audioFormat: AudioFormat.ENCODING_PCM_16BIT);
+      listener = stream!.listen(_processSamples);
+      _recStart = DateTime.now();
+      // Update the Run button into a Stop button.
+      _safeSetState(() {});
+    } catch (e) {
+      _showError("Microphone is not available: $e");
+    }
+  }
+
+  Future<void> _ailiaNaturalLanguageProcessingMultilingualE5() async {
+    final files = await _downloadModelFiles(const [
+      ('multilingual-e5', 'multilingual-e5-base.onnx'),
+      ('multilingual-e5', 'sentencepiece.bpe.model'),
+    ]);
+    if (files == null) {
+      return;
+    }
+    NaturalLanguageProcessingMultilingualE5 e5 =
+        NaturalLanguageProcessingMultilingualE5();
+    e5.open(files[0], files[1], selectedEnvId);
+    final query = _e5QueryController.text.trim();
+    final references = _e5RefControllers
+        .map((c) => c.text.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    int startTime = DateTime.now().millisecondsSinceEpoch;
+    final queryEmbedding = e5.textEmbedding(query);
+    final scores = [
+      for (final reference in references)
+        e5.cosSimilarity(queryEmbedding, e5.textEmbedding(reference)),
+    ];
+    int endTime = DateTime.now().millisecondsSinceEpoch;
+    String profileText =
+        "processing time : ${(endTime - startTime) / 1000} sec";
+    e5.close();
+    double best = scores.reduce(math.max);
+    final lines = [
+      for (int i = 0; i < references.length; i++)
+        "${scores[i] == best ? '★' : '　'} ${scores[i].toStringAsFixed(3)}  ${references[i]}",
+    ];
+    _safeSetState(() {
+      predict_result = "${lines.join('\n')}\n$profileText";
     });
   }
 
-  void _ailiaNaturalLanguageProcessingMultilingualE5() async {
-    _displayDownloadBegin();
-    downloadModel(
-        "https://storage.googleapis.com/ailia-models/multilingual-e5/multilingual-e5-base.onnx",
-        "multilingual-e5-base.onnx", (onnx_file) {
-      downloadModel(
-          "https://storage.googleapis.com/ailia-models/multilingual-e5/sentencepiece.bpe.model",
-          "sentencepiece.bpe.model", (spe_file) async {
-        await _displayDownloadEnd();
-        NaturalLanguageProcessingMultilingualE5 e5 =
-            NaturalLanguageProcessingMultilingualE5();
-        e5.open(onnx_file, spe_file, selectedEnvId);
-        final query = _e5QueryController.text.trim();
-        final references = _e5RefControllers
-            .map((c) => c.text.trim())
-            .where((t) => t.isNotEmpty)
-            .toList();
-        int startTime = DateTime.now().millisecondsSinceEpoch;
-        final queryEmbedding = e5.textEmbedding(query);
-        final scores = [
-          for (final reference in references)
-            e5.cosSimilarity(queryEmbedding, e5.textEmbedding(reference)),
-        ];
-        int endTime = DateTime.now().millisecondsSinceEpoch;
-        String profileText =
-            "processing time : ${(endTime - startTime) / 1000} sec";
-        e5.close();
-        double best = scores.reduce(math.max);
-        final lines = [
-          for (int i = 0; i < references.length; i++)
-            "${scores[i] == best ? '★' : '　'} ${scores[i].toStringAsFixed(3)}  ${references[i]}",
-        ];
-        _safeSetState(() {
-          predict_result = "${lines.join('\n')}\n$profileText";
-        });
-      }, _displayDownloadProgress);
-    }, _displayDownloadProgress);
-  }
-
-  void _ailiaObjectDetectionYoloX() async {
+  Future<void> _ailiaObjectDetectionYoloX() async {
     final imData = await _loadInputEncodedBytes(widget.model.sampleAsset!);
     image = await decodeImageFromList(imData);
     _safeSetState(() {});
@@ -1331,122 +1341,118 @@ class _DemoScreenState extends State<DemoScreen> {
     }
   }
 
-  void _ailiaNaturalLanguageProcessingFuguMTEnJa() {
+  Future<void> _ailiaNaturalLanguageProcessingFuguMTEnJa() async {
     NaturalLanguageProcessingFuguMT fuguMT = NaturalLanguageProcessingFuguMT();
     List<String> modelList = fuguMT.getModelList(false);
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
+    if (!await _downloadModelList(modelList)) {
+      return;
+    }
 
-      File encoderFile =
-          File(await getModelPath("fugumt-en-ja/seq2seq-lm-with-past.onnx"));
-      File? decoderFile;
-      File sourceFile = File(await getModelPath("fugumt-en-ja/source.spm"));
-      File targetFile = File(await getModelPath("fugumt-en-ja/target.spm"));
+    File encoderFile =
+        File(await getModelPath("fugumt-en-ja/seq2seq-lm-with-past.onnx"));
+    File? decoderFile;
+    File sourceFile = File(await getModelPath("fugumt-en-ja/source.spm"));
+    File targetFile = File(await getModelPath("fugumt-en-ja/target.spm"));
 
-      int startTime = DateTime.now().millisecondsSinceEpoch;
-      String targetText = _translateController.text.trim();
-      String outputText = fuguMT.translate(targetText, encoderFile, decoderFile,
-          sourceFile, targetFile, false, selectedEnvId);
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
+    int startTime = DateTime.now().millisecondsSinceEpoch;
+    String targetText = _translateController.text.trim();
+    String outputText = fuguMT.translate(targetText, encoderFile, decoderFile,
+        sourceFile, targetFile, false, selectedEnvId);
+    int endTime = DateTime.now().millisecondsSinceEpoch;
+    String profileText =
+        "processing time : ${(endTime - startTime) / 1000} sec";
 
-      _safeSetState(() {
-        predict_result = "$outputText\n$profileText";
-      });
+    _safeSetState(() {
+      predict_result = "$outputText\n$profileText";
     });
   }
 
-  void _ailiaNaturalLanguageProcessingFuguMTJaEn() {
+  Future<void> _ailiaNaturalLanguageProcessingFuguMTJaEn() async {
     NaturalLanguageProcessingFuguMT fuguMT = NaturalLanguageProcessingFuguMT();
     List<String> modelList = fuguMT.getModelList(true);
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
+    if (!await _downloadModelList(modelList)) {
+      return;
+    }
 
-      File encoderFile =
-          File(await getModelPath("fugumt-ja-en/encoder_model.onnx"));
-      File decoderFile =
-          File(await getModelPath("fugumt-ja-en/decoder_model.onnx"));
-      File sourceFile = File(await getModelPath("fugumt-ja-en/source.spm"));
-      File targetFile = File(await getModelPath("fugumt-ja-en/target.spm"));
+    File encoderFile =
+        File(await getModelPath("fugumt-ja-en/encoder_model.onnx"));
+    File decoderFile =
+        File(await getModelPath("fugumt-ja-en/decoder_model.onnx"));
+    File sourceFile = File(await getModelPath("fugumt-ja-en/source.spm"));
+    File targetFile = File(await getModelPath("fugumt-ja-en/target.spm"));
 
-      int startTime = DateTime.now().millisecondsSinceEpoch;
-      String targetText = _translateController.text.trim();
-      String outputText = fuguMT.translate(targetText, encoderFile, decoderFile,
-          sourceFile, targetFile, true, selectedEnvId);
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
+    int startTime = DateTime.now().millisecondsSinceEpoch;
+    String targetText = _translateController.text.trim();
+    String outputText = fuguMT.translate(targetText, encoderFile, decoderFile,
+        sourceFile, targetFile, true, selectedEnvId);
+    int endTime = DateTime.now().millisecondsSinceEpoch;
+    String profileText =
+        "processing time : ${(endTime - startTime) / 1000} sec";
 
-      _safeSetState(() {
-        predict_result = "$outputText\n$profileText";
-      });
+    _safeSetState(() {
+      predict_result = "$outputText\n$profileText";
     });
   }
 
   /// Runs one of the text-to-speech demos. The four models share the
   /// same download/synthesize/play flow and differ only in their model
   /// files and G2P dictionaries.
-  void _runTextToSpeech(int modelType) {
+  Future<void> _runTextToSpeech(int modelType) async {
     TextToSpeech textToSpeech = TextToSpeech();
     List<String> modelList = textToSpeech.getModelList(modelType);
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
+    if (!await _downloadModelList(modelList)) {
+      return;
+    }
 
-      final tacotron2 = modelType == TextToSpeech.MODEL_TYPE_TACOTRON2;
-      String encoderFile =
-          await getModelPath(tacotron2 ? "encoder.onnx" : "t2s_encoder.onnx");
-      String decoderFile = await getModelPath(
-          tacotron2 ? "decoder_iter.onnx" : "t2s_fsdec.onnx");
-      String postnetFile =
-          await getModelPath(tacotron2 ? "postnet.onnx" : "t2s_sdec.opt.onnx");
-      String waveglowFile =
-          await getModelPath(tacotron2 ? "waveglow.onnx" : "vits.onnx");
-      String? sslFile = tacotron2 ? null : await getModelPath("cnhubert.onnx");
+    final tacotron2 = modelType == TextToSpeech.MODEL_TYPE_TACOTRON2;
+    String encoderFile =
+        await getModelPath(tacotron2 ? "encoder.onnx" : "t2s_encoder.onnx");
+    String decoderFile =
+        await getModelPath(tacotron2 ? "decoder_iter.onnx" : "t2s_fsdec.onnx");
+    String postnetFile =
+        await getModelPath(tacotron2 ? "postnet.onnx" : "t2s_sdec.opt.onnx");
+    String waveglowFile =
+        await getModelPath(tacotron2 ? "waveglow.onnx" : "vits.onnx");
+    String? sslFile = tacotron2 ? null : await getModelPath("cnhubert.onnx");
 
-      String dicFolderOpenJtalk =
-          await getModelPath("open_jtalk_dic_utf_8-1.11/");
-      // The English and Chinese G2P dictionary files are downloaded flat
-      // into the model root.
-      String? dicFolderEn =
-          modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN ||
-                  modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH
-              ? await getModelPath("/")
-              : null;
-      String? dicFolderCn = modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH
-          ? await getModelPath("/")
-          : null;
-      String targetText = _ttsTextController.text.trim();
-      String outputPath = await getModelPath("temp$_runCounter.wav");
+    String dicFolderOpenJtalk =
+        await getModelPath("open_jtalk_dic_utf_8-1.11/");
+    // The English and Chinese G2P dictionary files are downloaded flat
+    // into the model root.
+    String? dicFolderEn = modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN ||
+            modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH
+        ? await getModelPath("/")
+        : null;
+    String? dicFolderCn = modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH
+        ? await getModelPath("/")
+        : null;
+    String targetText = _ttsTextController.text.trim();
+    String outputPath = await getModelPath("temp$_runCounter.wav");
 
-      int startTime = DateTime.now().millisecondsSinceEpoch;
-      if (!await _runTtsGeneration(() => textToSpeech.inference(
-          targetText,
-          outputPath,
-          encoderFile,
-          decoderFile,
-          postnetFile,
-          waveglowFile,
-          sslFile,
-          dicFolderOpenJtalk,
-          dicFolderEn,
-          modelType,
-          dicFolderG2PCn: dicFolderCn))) {
-        return;
-      }
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
+    int startTime = DateTime.now().millisecondsSinceEpoch;
+    if (!await _runTtsGeneration(() => textToSpeech.inference(
+        targetText,
+        outputPath,
+        encoderFile,
+        decoderFile,
+        postnetFile,
+        waveglowFile,
+        sslFile,
+        dicFolderOpenJtalk,
+        dicFolderEn,
+        modelType,
+        dicFolderG2PCn: dicFolderCn))) {
+      return;
+    }
+    int endTime = DateTime.now().millisecondsSinceEpoch;
+    String profileText =
+        "processing time : ${(endTime - startTime) / 1000} sec";
 
-      _safeSetState(() {
-        predict_result = profileText;
-        _lastTtsPath = outputPath;
-      });
-      _startPlaybackWaveform(outputPath);
+    _safeSetState(() {
+      predict_result = profileText;
+      _lastTtsPath = outputPath;
     });
+    _startPlaybackWaveform(outputPath);
   }
 
   // ---------------------------------------------------------------------
@@ -1613,43 +1619,42 @@ class _DemoScreenState extends State<DemoScreen> {
     }
   }
 
-  void _ailiaLargeLanguageModelGemma3Multimodal() async {
+  Future<void> _ailiaLargeLanguageModelGemma3Multimodal() async {
     MultimodalLargeLanguageModel multimodalLLM = MultimodalLargeLanguageModel();
     List<String> modelList = multimodalLLM.getModelList();
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      try {
-        String imagePath;
-        if (_capturedPath != null) {
-          imagePath = _capturedPath!;
-        } else {
-          _safeSetState(() {
-            predict_result = "Downloading sample image...";
-          });
-          File imageFile = await MultimodalLargeLanguageModel.downloadFile(
-              "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg",
-              await getModelPath("sample_image.jpg"));
-          imagePath = imageFile.path;
-        }
-
-        Uint8List imageBytes = await File(imagePath).readAsBytes();
-        // The captured frame is already shown as the frozen camera
-        // preview; only show the sample image separately.
-        image = _capturedPath == null
-            ? await decodeImageFromList(imageBytes)
-            : null;
-
+    if (!await _downloadModelList(modelList)) {
+      return;
+    }
+    try {
+      String imagePath;
+      if (_capturedPath != null) {
+        imagePath = _capturedPath!;
+      } else {
         _safeSetState(() {
-          predict_result = "Models downloaded. Ready for inference.";
+          predict_result = "Downloading sample image...";
         });
-
-        await _displayDownloadEnd();
-
-        await _performGemma3MultimodalInference(multimodalLLM, imagePath);
-      } catch (e) {
-        _showError(e);
+        File imageFile = await MultimodalLargeLanguageModel.downloadFile(
+            "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg",
+            await getModelPath("sample_image.jpg"));
+        imagePath = imageFile.path;
       }
-    });
+
+      Uint8List imageBytes = await File(imagePath).readAsBytes();
+      // The captured frame is already shown as the frozen camera
+      // preview; only show the sample image separately.
+      image =
+          _capturedPath == null ? await decodeImageFromList(imageBytes) : null;
+
+      _safeSetState(() {
+        predict_result = "Models downloaded. Ready for inference.";
+      });
+
+      await _displayDownloadEnd();
+
+      await _performGemma3MultimodalInference(multimodalLLM, imagePath);
+    } catch (e) {
+      _showError(e);
+    }
   }
 
   Future<void> _performGemma3MultimodalInference(
@@ -2300,7 +2305,8 @@ class _DemoScreenState extends State<DemoScreen> {
       return const SizedBox.shrink();
     }
     final stopMode = _realtimeActive || _speechRecognitionActive;
-    final busy = !stopMode && (_status.isNotEmpty || _chatGenerating);
+    final busy =
+        !stopMode && (_processing || _status.isNotEmpty || _chatGenerating);
     return Padding(
       padding: const EdgeInsets.only(top: 16),
       child: FilledButton.icon(
@@ -2331,7 +2337,7 @@ class _DemoScreenState extends State<DemoScreen> {
         label: Text(stopMode
             ? 'Stop'
             : busy
-                ? 'Working...'
+                ? 'Processing...'
                 : 'Run'),
       ),
     );
