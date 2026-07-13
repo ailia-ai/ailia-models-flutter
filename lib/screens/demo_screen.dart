@@ -103,6 +103,10 @@ class _DemoScreenState extends State<DemoScreen> {
   // Recording start time shown next to the mic waveform.
   DateTime? _recStart;
 
+  // macOS mic_stream only supports 48kHz; other platforms use 44.1kHz.
+  final int _micSampleRate =
+      !kIsWeb && Platform.isMacOS ? 48000 : 44100;
+
   // Last synthesized audio, replayable without re-synthesizing.
   String? _lastTtsPath;
 
@@ -1059,12 +1063,10 @@ class _DemoScreenState extends State<DemoScreen> {
       result[i] = int16[i] / 32738.0;
     }
 
-    int sampleRate = 44100;
-
-    _pushWaveform(_peakBlocks(result, sampleRate));
+    _pushWaveform(_peakBlocks(result, _micSampleRate));
     _safeSetState(() {}); // repaint waveform and REC time
 
-    whisper_streaming.send(result, sampleRate);
+    whisper_streaming.send(result, _micSampleRate);
   }
 
   void _ailiaAudioProcessingWhisper(
@@ -1140,10 +1142,9 @@ class _DemoScreenState extends State<DemoScreen> {
       }
 
       try {
-        int sampleRate = 44100;
         stream = MicStream.microphone(
             audioSource: AudioSource.DEFAULT,
-            sampleRate: sampleRate,
+            sampleRate: _micSampleRate,
             channelConfig: ChannelConfig.CHANNEL_IN_MONO,
             audioFormat: AudioFormat.ENCODING_PCM_16BIT);
         listener = stream!.listen(_processSamples);
@@ -1576,7 +1577,7 @@ class _DemoScreenState extends State<DemoScreen> {
           "processing time : ${(endTime - startTime) / 1000} sec";
 
       _safeSetState(() {
-        predict_result = "$inputText -> $outputText\n$profileText";
+        predict_result = "$outputText\n$profileText";
       });
 
       multimodalLLM.close();
