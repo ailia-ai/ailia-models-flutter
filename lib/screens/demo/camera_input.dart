@@ -371,6 +371,14 @@ class CameraInput extends ChangeNotifier {
     if (rotation != 0) {
       rgb = img.copyRotate(rgb, angle: rotation);
     }
+    if (Platform.isAndroid &&
+        controller.description.lensDirection == CameraLensDirection.front) {
+      // The Android preview mirrors front cameras (selfie style) while
+      // the analysis stream is not mirrored; flip the frames so the
+      // realtime results match the preview. iOS mirrors the front video
+      // output natively, so its frames already match.
+      rgb = img.flipHorizontal(rgb);
+    }
     updateAspectFrom(rgb.width, rgb.height);
     return CameraFrame(
         rgb.getBytes(order: img.ChannelOrder.rgb), rgb.width, rgb.height);
