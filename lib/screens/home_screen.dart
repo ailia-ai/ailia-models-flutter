@@ -66,64 +66,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Categories in catalog order.
-    final categories = <String>[];
-    for (final model in modelCatalog) {
-      if (!categories.contains(model.category)) {
-        categories.add(model.category);
-      }
-    }
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('ailia MODELS Flutter'),
         actions: const [BackendSelector()],
       ),
-      body: ListView(
+      body: GridView.builder(
         padding: const EdgeInsets.all(16),
-        children: [
-          for (final category in categories) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 8),
-              child: Row(
-                children: [
-                  Icon(categoryIcon(category),
-                      size: 20, color: categoryColor(context, category)),
-                  const SizedBox(width: 8),
-                  Text(
-                    category,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 260,
-                mainAxisExtent: 120,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount:
-                  modelCatalog.where((m) => m.category == category).length,
-              itemBuilder: (context, index) {
-                final model = modelCatalog
-                    .where((m) => m.category == category)
-                    .elementAt(index);
-                return ModelCard(
-                  model: model,
-                  downloaded: _downloaded.contains(model.id),
-                  onReturned: _refreshDownloaded,
-                );
-              },
-            ),
-          ],
-        ],
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 260,
+          mainAxisExtent: 140,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+        ),
+        itemCount: modelCatalog.length,
+        itemBuilder: (context, index) {
+          final model = modelCatalog[index];
+          return ModelCard(
+            model: model,
+            downloaded: _downloaded.contains(model.id),
+            onReturned: _refreshDownloaded,
+          );
+        },
       ),
     );
   }
