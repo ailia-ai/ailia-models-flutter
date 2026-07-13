@@ -54,7 +54,6 @@ class DemoScreen extends StatefulWidget {
 class _DemoScreenState extends State<DemoScreen> {
   String predict_result = "";
   int _runCounter = 0;
-  bool _running = false;
 
   InputSource _inputSource = InputSource.sample;
   bool _virtualMemory = false;
@@ -73,22 +72,17 @@ class _DemoScreenState extends State<DemoScreen> {
   static const int _waveformBlocks = 300;
   final List<double> _waveform = [];
   Timer? _playbackTimer;
-  bool _showPlaybackWaveform = false;
 
   // Meeting-minutes style transcript of speech recognition results.
   final List<String> _transcript = [];
 
   // Text spoken by the text-to-speech demos.
-  late final TextEditingController _ttsTextController = TextEditingController(
-    text: switch (widget.model.id) {
-      'gpt-sovits-ja' => 'こんにちは。今日はいい天気ですね。',
-      'gpt-sovits-zh' => '你好世界。',
-      _ => 'Hello world.',
-    },
-  );
+  late final TextEditingController _ttsTextController =
+      TextEditingController(text: widget.model.defaultTtsText ?? '');
 
   // LLM chat state. The model stays open so the conversation continues.
   LargeLanguageModel? _chatLlm;
+  String? _chatBackend;
   bool _chatGenerating = false;
   final List<Map<String, String>> _chatMessages = [];
   final TextEditingController _chatTextController = TextEditingController();
@@ -97,6 +91,7 @@ class _DemoScreenState extends State<DemoScreen> {
   // Progress / error display, separated from the inference result text.
   String _status = '';
   double? _downloadProgress;
+  int _lastProgressMs = 0;
   String? _errorText;
 
   // Recording start time shown next to the mic waveform.
@@ -120,9 +115,17 @@ class _DemoScreenState extends State<DemoScreen> {
   CameraImageData? _macLatestFrame;
 
   ui.Image? image;
-  bool isImageloaded = false;
 
   int get selectedEnvId => BackendState.instance.selectedEnvId.value;
+
+  /// setState that is safe to call from async callbacks which may fire
+  /// after the screen has been disposed (downloads, isolates, streams).
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) {
+      return;
+    }
+    setState(fn);
+  }
 
   // The camera plugin has no macOS/Linux implementation;
   // macOS is covered by the camera_macos package instead.
@@ -142,18 +145,10 @@ class _DemoScreenState extends State<DemoScreen> {
 
   bool get _supportsMic => widget.model.input == ModelInputKind.audio;
 
-  // Bundled sample image shown before the first run.
-  static const Map<String, String> _sampleAssets = {
-    'yolox': 'assets/clock.jpg',
-    'resnet18': 'assets/clock.jpg',
-    'u2net': 'assets/input_u2net.png',
-    'sam2': 'assets/truck.jpg',
-  };
-
   @override
   void initState() {
     super.initState();
-    final asset = _sampleAssets[widget.model.id];
+    final asset = widget.model.sampleAsset;
     if (asset != null) {
       _loadSampleImage(asset);
     }
@@ -163,12 +158,9 @@ class _DemoScreenState extends State<DemoScreen> {
   Future<void> _loadSampleImage(String asset) async {
     final data = await rootBundle.load(asset);
     final loaded = await decodeImageFromList(data.buffer.asUint8List());
-    if (mounted) {
-      setState(() {
-        image = loaded;
-        isImageloaded = true;
-      });
-    }
+    _safeSetState(() {
+      image = loaded;
+    });
   }
 
   @override
@@ -177,23 +169,29 @@ class _DemoScreenState extends State<DemoScreen> {
     _playbackTimer?.cancel();
     _ttsTextController.dispose();
     _chatTextController.dispose();
-    _chatLlm?.close();
+    // While a reply is streaming, chatStream still holds the native
+    // handle; _sendChatMessage closes it when the loop ends.
+    if (!_chatGenerating) {
+      _chatLlm?.close();
+      _chatLlm = null;
+    }
     _scrollController.dispose();
     _cameraController?.dispose();
     _macCameraController?.destroy();
-    listener?.cancel();
+    // Stop the speech recognition isolate; its finish callback closes it.
+    if (listener != null) {
+      listener!.cancel();
+      listener = null;
+      whisper_streaming.terminate();
+    }
     super.dispose();
   }
 
   /// Streams the waveform of a synthesized wav file into the waveform
   /// display, following the playback position in time.
-  Future<void> _startPlaybackWaveform(String wavPath) async {
-    final wav = await Wav.readFile(wavPath);
-    if (wav.channels.isEmpty) {
-      return;
-    }
-    final samples = wav.channels[0];
-    final blockSize = wav.samplesPerSecond ~/ 100; // ~10ms per block
+  /// Peak amplitude per ~10ms block, the unit of the waveform display.
+  List<double> _peakBlocks(List<double> samples, int sampleRate) {
+    final blockSize = sampleRate ~/ 100;
     final blocks = <double>[];
     for (int i = 0; i + blockSize <= samples.length; i += blockSize) {
       double peak = 0;
@@ -202,14 +200,31 @@ class _DemoScreenState extends State<DemoScreen> {
       }
       blocks.add(peak);
     }
+    return blocks;
+  }
+
+  /// Appends blocks to the scrolling waveform, keeping the last
+  /// [_waveformBlocks] entries.
+  void _pushWaveform(List<double> blocks) {
+    _waveform.addAll(blocks);
+    if (_waveform.length > _waveformBlocks) {
+      _waveform.removeRange(0, _waveform.length - _waveformBlocks);
+    }
+  }
+
+  Future<void> _startPlaybackWaveform(String wavPath) async {
+    final wav = await Wav.readFile(wavPath);
+    if (wav.channels.isEmpty) {
+      return;
+    }
+    final blocks = _peakBlocks(wav.channels[0], wav.samplesPerSecond);
     if (blocks.isEmpty || !mounted) {
       return;
     }
 
     _playbackTimer?.cancel();
-    _waveform.clear();
-    setState(() {
-      _showPlaybackWaveform = true;
+    _safeSetState(() {
+      _waveform.clear();
     });
 
     final startMs = DateTime.now().millisecondsSinceEpoch;
@@ -222,12 +237,9 @@ class _DemoScreenState extends State<DemoScreen> {
       final elapsedMs = DateTime.now().millisecondsSinceEpoch - startMs;
       int target = math.min(elapsedMs ~/ 10, blocks.length);
       if (target > nextBlock) {
-        _waveform.addAll(blocks.sublist(nextBlock, target));
-        if (_waveform.length > _waveformBlocks) {
-          _waveform.removeRange(0, _waveform.length - _waveformBlocks);
-        }
+        _pushWaveform(blocks.sublist(nextBlock, target));
         nextBlock = target;
-        setState(() {});
+        _safeSetState(() {});
       }
       if (nextBlock >= blocks.length) {
         timer.cancel();
@@ -241,12 +253,12 @@ class _DemoScreenState extends State<DemoScreen> {
 
   Future<void> _switchInputSource(InputSource source) async {
     if (source == InputSource.camera) {
-      setState(() {
+      _safeSetState(() {
         _inputSource = source;
         _cameraError = null;
         _capturedBytes = null;
         _capturedPath = null;
-        isImageloaded = false;
+        image = null;
         _rtBoxes = [];
         _rtOverlayImage = null;
         _rtFrameImage = null;
@@ -280,7 +292,7 @@ class _DemoScreenState extends State<DemoScreen> {
         _cameraController = null;
         _cameraError = 'Camera error: $e';
       }
-      if (mounted) setState(() {});
+      if (mounted) _safeSetState(() {});
     } else {
       _realtimeActive = false;
       _stopSpeechRecognition();
@@ -291,7 +303,7 @@ class _DemoScreenState extends State<DemoScreen> {
       _macCameraController = null;
       _macLatestFrame = null;
       await macController?.destroy();
-      setState(() {
+      _safeSetState(() {
         _inputSource = source;
         _capturedBytes = null;
         _capturedPath = null;
@@ -301,7 +313,7 @@ class _DemoScreenState extends State<DemoScreen> {
         _rtLabel = '';
         _waveform.clear();
       });
-      final asset = _sampleAssets[widget.model.id];
+      final asset = widget.model.sampleAsset;
       if (source == InputSource.sample && asset != null) {
         _loadSampleImage(asset);
       }
@@ -327,8 +339,8 @@ class _DemoScreenState extends State<DemoScreen> {
         }
         _capturedBytes = bytes;
         // Some demos (multimodal LLM) need a file path.
-        final file = File(
-            '${Directory.systemTemp.path}/ailia_camera_capture.jpg');
+        final file =
+            File('${Directory.systemTemp.path}/ailia_camera_capture.jpg');
         await file.writeAsBytes(bytes);
         _capturedPath = file.path;
         return true;
@@ -370,18 +382,29 @@ class _DemoScreenState extends State<DemoScreen> {
       widget.model.input == ModelInputKind.image;
 
   _CameraFrame _bgraToRgb(CameraImageData data) {
+    // One pass builds both the RGB buffer for inference and the RGBA
+    // buffer for display.
     final out = Uint8List(data.width * data.height * 3);
+    final rgba = Uint8List(data.width * data.height * 4);
     int o = 0;
+    int a = 0;
     for (int y = 0; y < data.height; y++) {
       int i = y * data.bytesPerRow;
       for (int x = 0; x < data.width; x++) {
-        out[o++] = data.bytes[i + 2];
-        out[o++] = data.bytes[i + 1];
-        out[o++] = data.bytes[i];
+        final b = data.bytes[i];
+        final g = data.bytes[i + 1];
+        final r = data.bytes[i + 2];
+        out[o++] = r;
+        out[o++] = g;
+        out[o++] = b;
+        rgba[a++] = r;
+        rgba[a++] = g;
+        rgba[a++] = b;
+        rgba[a++] = 255;
         i += 4;
       }
     }
-    return _CameraFrame(out, data.width, data.height);
+    return _CameraFrame(out, data.width, data.height, rgba: rgba);
   }
 
   /// Grabs the current camera frame as tightly packed RGB bytes.
@@ -424,9 +447,8 @@ class _DemoScreenState extends State<DemoScreen> {
       rgba[o++] = 255;
     }
     final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-        rgba, frame.width, frame.height, ui.PixelFormat.rgba8888,
-        completer.complete);
+    ui.decodeImageFromPixels(rgba, frame.width, frame.height,
+        ui.PixelFormat.rgba8888, completer.complete);
     return completer.future;
   }
 
@@ -442,7 +464,7 @@ class _DemoScreenState extends State<DemoScreen> {
   void _updateCameraAspect(int width, int height) {
     final aspect = width / height;
     if ((aspect - _cameraAspect).abs() > 0.01 && mounted) {
-      setState(() {
+      _safeSetState(() {
         _cameraAspect = aspect;
       });
     }
@@ -450,7 +472,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
   Future<void> _toggleRealtime() async {
     if (_realtimeActive) {
-      setState(() {
+      _safeSetState(() {
         _realtimeActive = false;
       });
       return;
@@ -459,7 +481,7 @@ class _DemoScreenState extends State<DemoScreen> {
       _showError(_cameraError ?? 'Camera is not ready.');
       return;
     }
-    setState(() {
+    _safeSetState(() {
       _realtimeActive = true;
       _rtBoxes = [];
       _rtOverlayImage = null;
@@ -491,7 +513,7 @@ class _DemoScreenState extends State<DemoScreen> {
           await _realtimeSam2();
           break;
         default:
-          setState(() {
+          _safeSetState(() {
             predict_result = 'Realtime mode is not supported for this model.';
           });
       }
@@ -507,7 +529,7 @@ class _DemoScreenState extends State<DemoScreen> {
       }
       _realtimeActive = false;
       if (mounted) {
-        setState(() {});
+        _safeSetState(() {});
       }
     }
   }
@@ -527,21 +549,55 @@ class _DemoScreenState extends State<DemoScreen> {
     }
   }
 
-  Future<void> _realtimeYoloX() async {
+  /// Downloads the given (remote folder, filename) model files with
+  /// progress display. Returns null (and shows an error) on failure.
+  Future<List<File>?> _downloadModelFiles(List<(String, String)> models) async {
     _displayDownloadBegin();
-    final onnxFile = await downloadModel(
-        "https://storage.googleapis.com/ailia-models/yolox/yolox_s.opt.onnx",
-        "yolox_s.opt.onnx",
-        null,
-        _displayDownloadProgress);
+    final files = <File>[];
+    for (final (folder, filename) in models) {
+      final file = await downloadModel(
+          "https://storage.googleapis.com/ailia-models/$folder/$filename",
+          filename,
+          null,
+          (int downloaded, int total) =>
+              _displayDownloadProgress(downloaded, total, filename: filename));
+      if (file == null) {
+        _showError("Download failed: $filename");
+        return null;
+      }
+      files.add(file);
+    }
     await _displayDownloadEnd();
-    if (onnxFile == null) {
+    return files;
+  }
+
+  /// Shared skeleton of the realtime demos: download the model files,
+  /// open the model, run [onFrame] until stopped, then close.
+  Future<void> _runRealtimeModel({
+    required List<(String, String)> models,
+    required void Function(List<File> files) openModel,
+    required Future<void> Function(_CameraFrame frame) onFrame,
+    required void Function() closeModel,
+  }) async {
+    final files = await _downloadModelFiles(models);
+    if (files == null) {
       return;
     }
-    final yolox = ObjectDetectionYoloX();
-    yolox.open(onnxFile, selectedEnvId);
+    openModel(files);
     try {
-      await _realtimeLoop((frame) async {
+      await _realtimeLoop(onFrame);
+    } finally {
+      closeModel();
+    }
+  }
+
+  Future<void> _realtimeYoloX() async {
+    final yolox = ObjectDetectionYoloX();
+    await _runRealtimeModel(
+      models: imageModelFiles['yolox']!,
+      openModel: (files) => yolox.open(files[0], selectedEnvId),
+      closeModel: yolox.close,
+      onFrame: (frame) async {
         int startTime = DateTime.now().millisecondsSinceEpoch;
         final res = yolox.run(frame.rgb, frame.width, frame.height);
         int endTime = DateTime.now().millisecondsSinceEpoch;
@@ -552,65 +608,45 @@ class _DemoScreenState extends State<DemoScreen> {
         if (!mounted) {
           return;
         }
-        setState(() {
+        _safeSetState(() {
           _rtBoxes = res;
           _rtCategories = yolox.category;
           _rtFrameImage = frameImage;
           predict_result =
               "${res.length} objects / ${endTime - startTime} ms per frame";
         });
-      });
-    } finally {
-      yolox.close();
-    }
+      },
+    );
   }
 
   Future<void> _realtimeResNet18() async {
-    _displayDownloadBegin();
-    final onnxFile = await downloadModel(
-        "https://storage.googleapis.com/ailia-models/resnet18/resnet18.onnx",
-        "resnet18.onnx",
-        null,
-        _displayDownloadProgress);
-    await _displayDownloadEnd();
-    if (onnxFile == null) {
-      return;
-    }
     final classifier = ImageClassificationResNet18();
-    classifier.open(onnxFile, selectedEnvId);
-    try {
-      await _realtimeLoop((frame) async {
+    await _runRealtimeModel(
+      models: imageModelFiles['resnet18']!,
+      openModel: (files) => classifier.open(files[0], selectedEnvId),
+      closeModel: classifier.close,
+      onFrame: (frame) async {
         int startTime = DateTime.now().millisecondsSinceEpoch;
-        final label = classifier.run(_frameToImage(frame));
+        final label = await classifier.run(_frameToImage(frame));
         int endTime = DateTime.now().millisecondsSinceEpoch;
         if (!mounted) {
           return;
         }
-        setState(() {
+        _safeSetState(() {
           _rtLabel = label;
           predict_result = "${endTime - startTime} ms per frame";
         });
-      });
-    } finally {
-      classifier.close();
-    }
+      },
+    );
   }
 
   Future<void> _realtimeU2Net() async {
-    _displayDownloadBegin();
-    final u2netModelFile = await downloadModel(
-        'https://storage.googleapis.com/ailia-models/u2net/u2net_opset11.onnx',
-        'u2net_opset11.onnx',
-        null,
-        _displayDownloadProgress);
-    await _displayDownloadEnd();
-    if (u2netModelFile == null) {
-      return;
-    }
     final u2net = U2Net();
-    u2net.open(u2netModelFile.path, envId: selectedEnvId);
-    try {
-      await _realtimeLoop((frame) async {
+    await _runRealtimeModel(
+      models: imageModelFiles['u2net']!,
+      openModel: (files) => u2net.open(files[0].path, envId: selectedEnvId),
+      closeModel: u2net.close,
+      onFrame: (frame) async {
         int startTime = DateTime.now().millisecondsSinceEpoch;
         await u2net.setImage(_frameToImage(frame));
         final maskImage = u2net.run();
@@ -623,50 +659,26 @@ class _DemoScreenState extends State<DemoScreen> {
         if (!mounted) {
           return;
         }
-        setState(() {
+        _safeSetState(() {
           // Show the processed frame with its mask so the result never
           // lags behind the live preview.
           _rtFrameImage = frameImage;
           _rtOverlayImage = maskUiImage;
           predict_result = "${endTime - startTime} ms per frame";
         });
-      });
-    } finally {
-      u2net.close();
-    }
+      },
+    );
   }
 
   Future<void> _realtimeSam2() async {
-    _displayDownloadBegin();
-    const remotePath =
-        'https://storage.googleapis.com/ailia-models/segment-anything-2/';
-    final imageEncoderModelFile = await downloadModel(
-        '${remotePath}image_encoder_hiera_t.onnx',
-        'image_encoder_hiera_t.onnx',
-        null,
-        _displayDownloadProgress);
-    final promptEncoderModelFile = await downloadModel(
-        '${remotePath}prompt_encoder_hiera_t.onnx',
-        'prompt_encoder_hiera_t.onnx',
-        null,
-        _displayDownloadProgress);
-    final maskEncoderModelFile = await downloadModel(
-        '${remotePath}mask_decoder_hiera_t.onnx',
-        'mask_decoder_hiera_t.onnx',
-        null,
-        _displayDownloadProgress);
-    await _displayDownloadEnd();
-    if (imageEncoderModelFile == null ||
-        promptEncoderModelFile == null ||
-        maskEncoderModelFile == null) {
-      return;
-    }
     final segmentImage = SegmentImage();
-    segmentImage.open(imageEncoderModelFile.path, promptEncoderModelFile.path,
-        maskEncoderModelFile.path,
-        envId: selectedEnvId);
-    try {
-      await _realtimeLoop((frame) async {
+    await _runRealtimeModel(
+      models: imageModelFiles['sam2']!,
+      openModel: (files) => segmentImage.open(
+          files[0].path, files[1].path, files[2].path,
+          envId: selectedEnvId),
+      closeModel: segmentImage.close,
+      onFrame: (frame) async {
         int startTime = DateTime.now().millisecondsSinceEpoch;
         final inputImage = _frameToImage(frame);
         await segmentImage.setImage(inputImage);
@@ -678,37 +690,34 @@ class _DemoScreenState extends State<DemoScreen> {
         }
         final result =
             await segmentImage.overlayMaskImage(inputImage, maskImage);
-        final maskUiImage = await segmentImage.imageToUiImage(result);
+        final maskUiImage = await imageToUiImage(result);
         if (!mounted) {
           return;
         }
-        setState(() {
+        _safeSetState(() {
           // The result already contains the processed frame, so show it
           // as the full-opacity background.
           _rtFrameImage = maskUiImage;
           predict_result = "${endTime - startTime} ms per frame";
         });
-      });
-    } finally {
-      segmentImage.close();
-    }
+      },
+    );
   }
 
-  // ---------------------------------------------------------------------
-  // Common helpers ported from the previous single screen implementation
-  // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Common helpers ported from the previous single screen implementation
+// ---------------------------------------------------------------------
 
   void _displayDownloadBegin() {
-    setState(() {
+    _safeSetState(() {
       _errorText = null;
       _status = "Downloading...";
       _downloadProgress = null;
     });
   }
 
-  void _displayDownloadProgress(int downloaded, int total,
-      {String? filename}) {
-    setState(() {
+  void _displayDownloadProgress(int downloaded, int total, {String? filename}) {
+    _safeSetState(() {
       _downloadProgress = total > 0 ? downloaded / total : null;
       final name = filename == null ? "" : " $filename";
       final mb = "${downloaded ~/ 1024 ~/ 1024} MB";
@@ -719,7 +728,7 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   Future<void> _displayDownloadEnd() async {
-    setState(() {
+    _safeSetState(() {
       _status = "";
       _downloadProgress = null;
     });
@@ -730,7 +739,7 @@ class _DemoScreenState extends State<DemoScreen> {
     if (!mounted) {
       return;
     }
-    setState(() {
+    _safeSetState(() {
       _errorText = "$error";
       _status = "";
       _downloadProgress = null;
@@ -742,7 +751,7 @@ class _DemoScreenState extends State<DemoScreen> {
     String filename = basename(modelList[downloadCnt + 1]);
     String url =
         "https://storage.googleapis.com/ailia-models/${modelList[downloadCnt + 0]}/$filename";
-    setState(() {
+    _safeSetState(() {
       _errorText = null;
       _status = "Downloading ${modelList[downloadCnt + 1]}";
       _downloadProgress = null;
@@ -750,7 +759,7 @@ class _DemoScreenState extends State<DemoScreen> {
     downloadModel(url, modelList[downloadCnt + 1], (file) {
       downloadCnt = downloadCnt + 2;
       if (downloadCnt >= modelList.length) {
-        setState(() {
+        _safeSetState(() {
           _status = "";
           _downloadProgress = null;
         });
@@ -764,148 +773,106 @@ class _DemoScreenState extends State<DemoScreen> {
     });
   }
 
-  // ---------------------------------------------------------------------
-  // Demo runners
-  // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Demo runners
+// ---------------------------------------------------------------------
 
   Future<void> _run() async {
-    final isSpeechToText = widget.model.id.startsWith('whisper') ||
-        widget.model.id == 'sensevoice_small';
-    if (_running && !isSpeechToText) {
-      return;
-    }
-    if (widget.model.category == 'Text To Speech' &&
-        _ttsTextController.text.trim().isEmpty) {
-      setState(() {
+    if (widget.model.isTextToSpeech && _ttsTextController.text.trim().isEmpty) {
+      _safeSetState(() {
         predict_result = 'Please enter text to speak.';
       });
       return;
     }
-    _running = true;
-    setState(() {
+    _safeSetState(() {
       _errorText = null;
     });
     try {
-      try {
-        await AiliaLicense.checkAndDownloadLicense();
-        if (!await _prepareInput()) {
-          return;
-        }
-      } catch (e) {
-        _showError(e);
+      await AiliaLicense.checkAndDownloadLicense();
+      if (!await _prepareInput()) {
         return;
       }
+    } catch (e) {
+      _showError(e);
+      return;
+    }
 
-      switch (widget.model.id) {
-        case "sam2":
-          _ailiaImageSegmentationSam2();
-          break;
-        case "u2net":
-          _ailiaBackgroundRemovalU2Net();
-          break;
-        case "resnet18":
-          _ailiaImageClassificationResNet18();
-          break;
-        case "whisper_tiny":
-        case "whisper_small":
-        case "whisper_medium":
-        case "whisper_large_v3_turbo":
-        case "sensevoice_small":
-          if (_inputSource == InputSource.mic) {
-            _ailiaAudioProcessingWhisperStreaming(
-                widget.model.id, _virtualMemory);
-          } else {
-            _ailiaAudioProcessingWhisper(widget.model.id, _virtualMemory);
-          }
-          break;
-        case "multilingual-e5":
-          _ailiaNaturalLanguageProcessingMultilingualE5();
-          break;
-        case "yolox":
-          _ailiaObjectDetectionYoloX();
-          break;
-        case "fugumt-en-ja":
-          _ailiaNaturalLanguageProcessingFuguMTEnJa();
-          break;
-        case "fugumt-ja-en":
-          _ailiaNaturalLanguageProcessingFuguMTJaEn();
-          break;
-        case "tacotron2":
-          _ailiaTextToSpeechTactoron2();
-          break;
-        case "gpt-sovits-ja":
-          _ailiaTextToSpeechGPTSoVITS_JA();
-          break;
-        case "gpt-sovits-en":
-          _ailiaTextToSpeechGPTSoVITS_EN();
-          break;
-        case "gpt-sovits-zh":
-          _ailiaTextToSpeechGPTSoVITS_ZH();
-          break;
-        case "gemma2":
-        case "gemma4-e2b":
-          try {
-            await _ensureChatModel();
-          } catch (e) {
-            _showError(e);
-          }
-          break;
-        case "gemma3-multimodal":
-          _ailiaLargeLanguageModelGemma3Multimodal();
-          break;
-        default:
-          throw (Exception("Unknown model type"));
-      }
-    } finally {
-      _running = false;
+    switch (widget.model.id) {
+      case "sam2":
+        _ailiaImageSegmentationSam2();
+        break;
+      case "u2net":
+        _ailiaBackgroundRemovalU2Net();
+        break;
+      case "resnet18":
+        _ailiaImageClassificationResNet18();
+        break;
+      case "whisper_tiny":
+      case "whisper_small":
+      case "whisper_medium":
+      case "whisper_large_v3_turbo":
+      case "sensevoice_small":
+        if (_inputSource == InputSource.mic) {
+          _ailiaAudioProcessingWhisperStreaming(
+              widget.model.id, _virtualMemory);
+        } else {
+          _ailiaAudioProcessingWhisper(widget.model.id, _virtualMemory);
+        }
+        break;
+      case "multilingual-e5":
+        _ailiaNaturalLanguageProcessingMultilingualE5();
+        break;
+      case "yolox":
+        _ailiaObjectDetectionYoloX();
+        break;
+      case "fugumt-en-ja":
+        _ailiaNaturalLanguageProcessingFuguMTEnJa();
+        break;
+      case "fugumt-ja-en":
+        _ailiaNaturalLanguageProcessingFuguMTJaEn();
+        break;
+      case "tacotron2":
+        _runTextToSpeech(TextToSpeech.MODEL_TYPE_TACOTRON2);
+        break;
+      case "gpt-sovits-ja":
+        _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_JA);
+        break;
+      case "gpt-sovits-en":
+        _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN);
+        break;
+      case "gpt-sovits-zh":
+        _runTextToSpeech(TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH);
+        break;
+      case "gemma2":
+      case "gemma4-e2b":
+        try {
+          await _ensureChatModel();
+        } catch (e) {
+          _showError(e);
+        }
+        break;
+      case "gemma3-multimodal":
+        _ailiaLargeLanguageModelGemma3Multimodal();
+        break;
+      default:
+        throw (Exception("Unknown model type"));
     }
   }
 
   void _ailiaImageSegmentationSam2() async {
-    image = await _loadInputUiImage("assets/truck.jpg");
+    image = await _loadInputUiImage(widget.model.sampleAsset!);
+    _safeSetState(() {});
 
-    setState(() {
-      isImageloaded = true;
-    });
-
-    _displayDownloadBegin();
-
-    const remotePath =
-        'https://storage.googleapis.com/ailia-models/segment-anything-2/';
-    const imageEncoderModel = 'image_encoder_hiera_t.onnx';
-    const promptEncoderModel = 'prompt_encoder_hiera_t.onnx';
-    const maskEncoderModel = 'mask_decoder_hiera_t.onnx';
-
-    final imageEncoderModelFile = await downloadModel(
-        '$remotePath$imageEncoderModel',
-        imageEncoderModel,
-        null,
-        _displayDownloadProgress);
-    final promptEncoderModelFile = await downloadModel(
-        '$remotePath$promptEncoderModel',
-        promptEncoderModel,
-        null,
-        _displayDownloadProgress);
-    final maskEncoderModelFile = await downloadModel(
-        '$remotePath$maskEncoderModel',
-        maskEncoderModel,
-        null,
-        _displayDownloadProgress);
-
-    _displayDownloadEnd();
-
-    if (imageEncoderModelFile == null ||
-        promptEncoderModelFile == null ||
-        maskEncoderModelFile == null) {
+    final files = await _downloadModelFiles(imageModelFiles['sam2']!);
+    if (files == null) {
       return;
     }
 
     SegmentImage segmentImage = SegmentImage();
-    segmentImage.open(imageEncoderModelFile.path, promptEncoderModelFile.path,
-        maskEncoderModelFile.path,
+    segmentImage.open(files[0].path, files[1].path, files[2].path,
         envId: selectedEnvId);
 
-    final inputImage = await segmentImage.uiImageToImage(image!);
+    final inputImage = await uiImageToImage(image!);
     await segmentImage.setImage(inputImage);
 
     // The default sample point matches the bundled truck image. For a
@@ -923,8 +890,8 @@ class _DemoScreenState extends State<DemoScreen> {
     img.Image result =
         await segmentImage.overlayMaskImage(inputImage, maskImage);
 
-    final maskUiImage = await segmentImage.imageToUiImage(result);
-    setState(() {
+    final maskUiImage = await imageToUiImage(result);
+    _safeSetState(() {
       predict_result = 'Generated masks.';
       image = maskUiImage;
     });
@@ -933,28 +900,16 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   void _ailiaBackgroundRemovalU2Net() async {
-    image = await _loadInputUiImage("assets/input_u2net.png");
+    image = await _loadInputUiImage(widget.model.sampleAsset!);
+    _safeSetState(() {});
 
-    setState(() {
-      isImageloaded = true;
-    });
-
-    _displayDownloadBegin();
-
-    const remotePath = 'https://storage.googleapis.com/ailia-models/u2net/';
-    const u2netModel = 'u2net_opset11.onnx';
-
-    final u2netModelFile = await downloadModel(
-        '$remotePath$u2netModel', u2netModel, null, _displayDownloadProgress);
-
-    _displayDownloadEnd();
-
-    if (u2netModelFile == null) {
+    final files = await _downloadModelFiles(imageModelFiles['u2net']!);
+    if (files == null) {
       return;
     }
 
     U2Net u2net = U2Net();
-    u2net.open(u2netModelFile.path, envId: selectedEnvId);
+    u2net.open(files[0].path, envId: selectedEnvId);
 
     final inputImage = await uiImageToImage(image!);
     await u2net.setImage(inputImage);
@@ -967,7 +922,7 @@ class _DemoScreenState extends State<DemoScreen> {
     }
 
     final maskUiImage = await imageToUiImage(maskImage);
-    setState(() {
+    _safeSetState(() {
       predict_result = 'Generated masks.';
       image = maskUiImage;
     });
@@ -976,30 +931,31 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   void _ailiaImageClassificationResNet18() async {
-    image = await _loadInputUiImage("assets/clock.jpg");
-    setState(() {
-      isImageloaded = true;
-    });
+    image = await _loadInputUiImage(widget.model.sampleAsset!);
+    _safeSetState(() {});
 
-    _displayDownloadBegin();
-    downloadModel(
-        "https://storage.googleapis.com/ailia-models/resnet18/resnet18.onnx",
-        "resnet18.onnx", (onnx_file) async {
-      await _displayDownloadEnd();
-      image!.toByteData(format: ui.ImageByteFormat.rawRgba).then((data) {
-        ailiaEnvironmentSample();
+    final files = await _downloadModelFiles(imageModelFiles['resnet18']!);
+    if (files == null) {
+      return;
+    }
+    final classifier = ImageClassificationResNet18();
+    classifier.open(files[0], selectedEnvId);
+    try {
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      String classificationText =
+          await classifier.run(await uiImageToImage(image!));
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+      String profileText =
+          "processing time : ${(endTime - startTime) / 1000} sec";
 
-        int startTime = DateTime.now().millisecondsSinceEpoch;
-        String classificationText = ailiaPredictSample(onnx_file, data!);
-        int endTime = DateTime.now().millisecondsSinceEpoch;
-        String profileText =
-            "processing time : ${(endTime - startTime) / 1000} sec";
-
-        setState(() {
-          predict_result = "$classificationText\n$profileText";
-        });
+      _safeSetState(() {
+        predict_result = "$classificationText\n$profileText";
       });
-    }, _displayDownloadProgress);
+    } catch (e) {
+      _showError(e);
+    } finally {
+      classifier.close();
+    }
   }
 
   AudioProcessingWhisper whisper = AudioProcessingWhisper();
@@ -1023,13 +979,13 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   void _intermediateCallback(List<SpeechText> text) {
-    setState(() {
+    _safeSetState(() {
       predict_result = "${text[0].text}...";
     });
   }
 
   void _messageCallback(List<SpeechText> text) {
-    setState(() {
+    _safeSetState(() {
       predict_result = "";
       for (int i = 0; i < text.length; i++) {
         _transcript.add(_formatTranscriptLine(text[i]));
@@ -1040,7 +996,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
   void _finishCallback() {
     whisper_streaming.close();
-    setState(() {
+    _safeSetState(() {
       predict_result = "Stopped. The transcript is kept below.";
     });
     terminating = false;
@@ -1059,51 +1015,35 @@ class _DemoScreenState extends State<DemoScreen> {
     _recStart = null;
     whisper_streaming.terminate();
     terminating = true;
-    setState(() {
+    _safeSetState(() {
       predict_result = "Please wait terminate.";
     });
   }
 
-  void _processSamples(samples) {
+  void _processSamples(Uint8List samples) {
     // https://github.com/anarchuser/mic_stream/issues/94
-    List<double> result = [];
-    int UInt16Max = math.pow(2, 16).toInt();
-    for (var i = 0; i < samples.length ~/ 2; i++) {
-      int a = samples[2 * i + 1];
-      int b = samples[2 * i];
-      int c = 256 * a + b;
-      if (2 * c > UInt16Max) {
-        c = -UInt16Max + c;
-      }
-      result.add(c / 32738.0);
+    final int16 =
+        samples.buffer.asInt16List(samples.offsetInBytes, samples.length ~/ 2);
+    final result = Float64List(int16.length);
+    for (var i = 0; i < int16.length; i++) {
+      result[i] = int16[i] / 32738.0;
     }
 
     int sampleRate = 44100;
 
-    // Append peak amplitude per ~10ms block for the waveform display.
-    final blockSize = sampleRate ~/ 100;
-    for (int i = 0; i + blockSize <= result.length; i += blockSize) {
-      double peak = 0;
-      for (int j = i; j < i + blockSize; j++) {
-        peak = math.max(peak, result[j].abs());
-      }
-      _waveform.add(peak);
-    }
-    if (_waveform.length > _waveformBlocks) {
-      _waveform.removeRange(0, _waveform.length - _waveformBlocks);
-    }
-
-    setState(() {}); // repaint waveform and REC time
+    _pushWaveform(_peakBlocks(result, sampleRate));
+    _safeSetState(() {}); // repaint waveform and REC time
 
     whisper_streaming.send(result, sampleRate);
   }
 
-  void _ailiaAudioProcessingWhisper(String modelType, bool virtualMemory) async {
+  void _ailiaAudioProcessingWhisper(
+      String modelType, bool virtualMemory) async {
     ByteData data = await rootBundle.load("assets/demo.wav");
     final wav = await Wav.read(data.buffer.asUint8List());
     AudioProcessingWhisper whisper = AudioProcessingWhisper();
     List<String> modelList = whisper.getModelList(modelType);
-    setState(() {
+    _safeSetState(() {
       _transcript.clear();
     });
     _displayDownloadBegin();
@@ -1116,7 +1056,7 @@ class _DemoScreenState extends State<DemoScreen> {
       List<SpeechText> texts = await whisper.transcribe(wav, onnx_encoder_file,
           onnx_decoder_file, vad_file, selectedEnvId, modelType, virtualMemory);
       int endTime = DateTime.now().millisecondsSinceEpoch;
-      setState(() {
+      _safeSetState(() {
         for (int i = 0; i < texts.length; i++) {
           _transcript.add(_formatTranscriptLine(texts[i]));
         }
@@ -1134,7 +1074,7 @@ class _DemoScreenState extends State<DemoScreen> {
     downloadModelFromModelList(0, modelList, () async {
       await _displayDownloadEnd();
 
-      setState(() {
+      _safeSetState(() {
         predict_result = "Please speak to mic.";
       });
 
@@ -1142,22 +1082,13 @@ class _DemoScreenState extends State<DemoScreen> {
       File onnx_encoder_file = File(await getModelPath(modelList[3]));
       File onnx_decoder_file = File(await getModelPath(modelList[5]));
 
-      if (terminating) {
+      // The Stop button handles termination via _stopSpeechRecognition;
+      // ignore a Run that lands while stopping or already recording.
+      if (terminating || listener != null) {
         return;
       }
 
-      if (listener != null) {
-        listener!.cancel();
-        listener = null;
-        whisper_streaming.terminate();
-        setState(() {
-          predict_result = "Please wait terminate.";
-        });
-        terminating = true;
-        return;
-      }
-
-      setState(() {
+      _safeSetState(() {
         _transcript.clear();
       });
 
@@ -1188,7 +1119,7 @@ class _DemoScreenState extends State<DemoScreen> {
         listener = stream!.listen(_processSamples);
         _recStart = DateTime.now();
         // Update the Run button into a Stop button.
-        setState(() {});
+        _safeSetState(() {});
       } catch (e) {
         _showError("Microphone is not available: $e");
       }
@@ -1220,7 +1151,7 @@ class _DemoScreenState extends State<DemoScreen> {
         String profileText =
             "processing time : ${(endTime - startTime) / 1000} sec";
         e5.close();
-        setState(() {
+        _safeSetState(() {
           predict_result =
               "$text1 vs $text2 sim $sim1\n$text1 vs $text3 sim $sim2\n$profileText";
         });
@@ -1229,27 +1160,22 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   void _ailiaObjectDetectionYoloX() async {
-    final imData = await _loadInputEncodedBytes("assets/clock.jpg");
+    final imData = await _loadInputEncodedBytes(widget.model.sampleAsset!);
     image = await decodeImageFromList(imData);
-    setState(() {
-      isImageloaded = true;
-    });
+    _safeSetState(() {});
 
-    _displayDownloadBegin();
-    downloadModel(
-        "https://storage.googleapis.com/ailia-models/yolox/yolox_s.opt.onnx",
-        "yolox_s.opt.onnx", (onnx_file) async {
-      await _displayDownloadEnd();
-      ObjectDetectionYoloX yolox = ObjectDetectionYoloX();
-      yolox.open(onnx_file, selectedEnvId);
-
+    final files = await _downloadModelFiles(imageModelFiles['yolox']!);
+    if (files == null) {
+      return;
+    }
+    ObjectDetectionYoloX yolox = ObjectDetectionYoloX();
+    yolox.open(files[0], selectedEnvId);
+    try {
       final decoded = img.decodeImage(imData)!;
       final width = decoded.width;
       final height = decoded.height;
       final imageWithoutAlpha = decoded.convert(numChannels: 3);
       final buffer = imageWithoutAlpha.getBytes(order: img.ChannelOrder.rgb);
-
-      String resultSubText;
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
       final res = yolox.run(buffer, width, height);
@@ -1257,17 +1183,19 @@ class _DemoScreenState extends State<DemoScreen> {
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
 
-      resultSubText = res
+      String resultSubText = res
           .map((e) =>
               "x:${e.x} y:${e.y} w:${e.w} h:${e.h} p:${e.prob} label:${yolox.category[e.category]}")
           .join("\n");
 
-      setState(() {
+      _safeSetState(() {
         _rtBoxes = res;
         _rtCategories = yolox.category;
         predict_result = "$resultSubText\n$profileText";
       });
-    }, _displayDownloadProgress);
+    } finally {
+      yolox.close();
+    }
   }
 
   void _ailiaNaturalLanguageProcessingFuguMTEnJa() {
@@ -1291,7 +1219,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
 
-      setState(() {
+      _safeSetState(() {
         predict_result = "$targetText -> $outputText\n$profileText";
       });
     });
@@ -1319,166 +1247,45 @@ class _DemoScreenState extends State<DemoScreen> {
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
 
-      setState(() {
+      _safeSetState(() {
         predict_result = "$targetText -> $outputText\n$profileText";
       });
     });
   }
 
-  void _ailiaTextToSpeechTactoron2() {
+  /// Runs one of the text-to-speech demos. The four models share the
+  /// same download/synthesize/play flow and differ only in their model
+  /// files and G2P dictionaries.
+  void _runTextToSpeech(int modelType) {
     TextToSpeech textToSpeech = TextToSpeech();
-    List<String> modelList =
-        textToSpeech.getModelList(TextToSpeech.MODEL_TYPE_TACOTRON2);
+    List<String> modelList = textToSpeech.getModelList(modelType);
     _displayDownloadBegin();
     downloadModelFromModelList(0, modelList, () async {
       await _displayDownloadEnd();
 
-      String encoderFile = await getModelPath("encoder.onnx");
-      String decoderFile = await getModelPath("decoder_iter.onnx");
-      String postnetFile = await getModelPath("postnet.onnx");
-      String waveglowFile = await getModelPath("waveglow.onnx");
-      String? sslFile;
-
-      String dicFolder = await getModelPath("open_jtalk_dic_utf_8-1.11/");
-      String targetText = _ttsTextController.text.trim();
-      String outputPath = await getModelPath("temp$_runCounter.wav");
-
-      int startTime = DateTime.now().millisecondsSinceEpoch;
-      if (!await _runTtsGeneration(() => textToSpeech.inference(
-          targetText,
-          outputPath,
-          encoderFile,
-          decoderFile,
-          postnetFile,
-          waveglowFile,
-          sslFile,
-          dicFolder,
-          null,
-          TextToSpeech.MODEL_TYPE_TACOTRON2))) {
-        return;
-      }
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
-
-      setState(() {
-        predict_result = profileText;
-        _lastTtsPath = outputPath;
-      });
-      _startPlaybackWaveform(outputPath);
-    });
-  }
-
-  void _ailiaTextToSpeechGPTSoVITS_JA() {
-    TextToSpeech textToSpeech = TextToSpeech();
-    List<String> modelList =
-        textToSpeech.getModelList(TextToSpeech.MODEL_TYPE_GPT_SOVITS_JA);
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
-
-      String encoderFile = await getModelPath("t2s_encoder.onnx");
-      String decoderFile = await getModelPath("t2s_fsdec.onnx");
-      String postnetFile = await getModelPath("t2s_sdec.opt.onnx");
-      String waveglowFile = await getModelPath("vits.onnx");
-      String sslFile = await getModelPath("cnhubert.onnx");
-
-      String dicFolder = await getModelPath("open_jtalk_dic_utf_8-1.11/");
-      String targetText = _ttsTextController.text.trim();
-      String outputPath = await getModelPath("temp$_runCounter.wav");
-
-      int startTime = DateTime.now().millisecondsSinceEpoch;
-      if (!await _runTtsGeneration(() => textToSpeech.inference(
-          targetText,
-          outputPath,
-          encoderFile,
-          decoderFile,
-          postnetFile,
-          waveglowFile,
-          sslFile,
-          dicFolder,
-          null,
-          TextToSpeech.MODEL_TYPE_GPT_SOVITS_JA))) {
-        return;
-      }
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
-
-      setState(() {
-        predict_result = profileText;
-        _lastTtsPath = outputPath;
-      });
-      _startPlaybackWaveform(outputPath);
-    });
-  }
-
-  void _ailiaTextToSpeechGPTSoVITS_EN() {
-    TextToSpeech textToSpeech = TextToSpeech();
-    List<String> modelList =
-        textToSpeech.getModelList(TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN);
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
-
-      String encoderFile = await getModelPath("t2s_encoder.onnx");
-      String decoderFile = await getModelPath("t2s_fsdec.onnx");
-      String postnetFile = await getModelPath("t2s_sdec.opt.onnx");
-      String waveglowFile = await getModelPath("vits.onnx");
-      String sslFile = await getModelPath("cnhubert.onnx");
-
-      String dicFolderOpenJtalk =
-          await getModelPath("open_jtalk_dic_utf_8-1.11/");
-      String dicFolderEn = await getModelPath("/");
-      String targetText = _ttsTextController.text.trim();
-      String outputPath = await getModelPath("temp$_runCounter.wav");
-
-      int startTime = DateTime.now().millisecondsSinceEpoch;
-      if (!await _runTtsGeneration(() => textToSpeech.inference(
-          targetText,
-          outputPath,
-          encoderFile,
-          decoderFile,
-          postnetFile,
-          waveglowFile,
-          sslFile,
-          dicFolderOpenJtalk,
-          dicFolderEn,
-          TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN))) {
-        return;
-      }
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
-
-      setState(() {
-        predict_result = profileText;
-        _lastTtsPath = outputPath;
-      });
-      _startPlaybackWaveform(outputPath);
-    });
-  }
-
-  void _ailiaTextToSpeechGPTSoVITS_ZH() {
-    TextToSpeech textToSpeech = TextToSpeech();
-    List<String> modelList =
-        textToSpeech.getModelList(TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH);
-    _displayDownloadBegin();
-    downloadModelFromModelList(0, modelList, () async {
-      await _displayDownloadEnd();
-
-      String encoderFile = await getModelPath("t2s_encoder.onnx");
-      String decoderFile = await getModelPath("t2s_fsdec.onnx");
-      String postnetFile = await getModelPath("t2s_sdec.opt.onnx");
-      String waveglowFile = await getModelPath("vits.onnx");
-      String sslFile = await getModelPath("cnhubert.onnx");
+      final tacotron2 = modelType == TextToSpeech.MODEL_TYPE_TACOTRON2;
+      String encoderFile =
+          await getModelPath(tacotron2 ? "encoder.onnx" : "t2s_encoder.onnx");
+      String decoderFile = await getModelPath(
+          tacotron2 ? "decoder_iter.onnx" : "t2s_fsdec.onnx");
+      String postnetFile =
+          await getModelPath(tacotron2 ? "postnet.onnx" : "t2s_sdec.opt.onnx");
+      String waveglowFile =
+          await getModelPath(tacotron2 ? "waveglow.onnx" : "vits.onnx");
+      String? sslFile = tacotron2 ? null : await getModelPath("cnhubert.onnx");
 
       String dicFolderOpenJtalk =
           await getModelPath("open_jtalk_dic_utf_8-1.11/");
       // The English and Chinese G2P dictionary files are downloaded flat
       // into the model root.
-      String dicFolderEn = await getModelPath("/");
-      String dicFolderCn = await getModelPath("/");
+      String? dicFolderEn =
+          modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN ||
+                  modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH
+              ? await getModelPath("/")
+              : null;
+      String? dicFolderCn = modelType == TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH
+          ? await getModelPath("/")
+          : null;
       String targetText = _ttsTextController.text.trim();
       String outputPath = await getModelPath("temp$_runCounter.wav");
 
@@ -1493,7 +1300,7 @@ class _DemoScreenState extends State<DemoScreen> {
           sslFile,
           dicFolderOpenJtalk,
           dicFolderEn,
-          TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH,
+          modelType,
           dicFolderG2PCn: dicFolderCn))) {
         return;
       }
@@ -1501,7 +1308,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
 
-      setState(() {
+      _safeSetState(() {
         predict_result = profileText;
         _lastTtsPath = outputPath;
       });
@@ -1513,14 +1320,24 @@ class _DemoScreenState extends State<DemoScreen> {
   // LLM chat
   // ---------------------------------------------------------------------
 
-  bool get _isChatModel =>
-      widget.model.id == 'gemma2' || widget.model.id == 'gemma4-e2b';
+  bool get _isChatModel => widget.model.isChat;
 
   /// Downloads and opens the chat model once; later calls are no-ops so
   /// the conversation continues on the same context.
   Future<void> _ensureChatModel() async {
+    // ailia LLM has its own backend list; use the LLM selection.
+    String selectedBackend = BackendState.instance.selectedLlmBackend.value;
     if (_chatLlm != null) {
-      return;
+      if (selectedBackend == _chatBackend) {
+        return;
+      }
+      // Backend changed: reopen the model. The context cannot move
+      // between backends, so the conversation starts over.
+      _chatLlm!.close();
+      _chatLlm = null;
+      _safeSetState(() {
+        _chatMessages.clear();
+      });
     }
     await AiliaLicense.checkAndDownloadLicense();
     final llm = LargeLanguageModel();
@@ -1534,23 +1351,30 @@ class _DemoScreenState extends State<DemoScreen> {
     if (modelFile == null) {
       throw Exception("Model download failed");
     }
+    if (!mounted) {
+      // The screen was closed during the download; do not load the model.
+      return;
+    }
 
-    setState(() {
+    _safeSetState(() {
       _status = "Loading model with selected backend...";
     });
-    // ailia LLM has its own backend list; use the LLM selection.
-    String selectedBackend = BackendState.instance.selectedLlmBackend.value;
     llm.openWithBackendName(modelFile, selectedBackend);
+    if (!mounted) {
+      llm.close();
+      return;
+    }
     llm.setSystemPrompt(_systemPrompt);
     _chatLlm = llm;
-    setState(() {
+    _chatBackend = selectedBackend;
+    _safeSetState(() {
       _status = "";
       predict_result = "Model loaded. Enter a message to chat.";
     });
   }
 
   void _clearChat() {
-    setState(() {
+    _safeSetState(() {
       _chatMessages.clear();
       predict_result = "";
     });
@@ -1585,7 +1409,7 @@ class _DemoScreenState extends State<DemoScreen> {
     if (result == null || result.isEmpty || result == _systemPrompt) {
       return;
     }
-    setState(() {
+    _safeSetState(() {
       _systemPrompt = result;
       // Changing the prompt starts a fresh conversation.
       _chatMessages.clear();
@@ -1598,7 +1422,7 @@ class _DemoScreenState extends State<DemoScreen> {
     if (text.isEmpty || _chatGenerating) {
       return;
     }
-    setState(() {
+    _safeSetState(() {
       _chatGenerating = true;
       _errorText = null;
       _chatTextController.clear();
@@ -1607,41 +1431,57 @@ class _DemoScreenState extends State<DemoScreen> {
     _scrollToBottom();
     try {
       await _ensureChatModel();
-      setState(() {
+      if (!mounted || _chatLlm == null) {
+        return;
+      }
+      _safeSetState(() {
         _chatMessages.add({'role': 'assistant', 'content': ''});
       });
       int startTime = DateTime.now().millisecondsSinceEpoch;
-      await _chatLlm!.chatStream(text, (delta) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _chatMessages.last['content'] =
-              (_chatMessages.last['content'] ?? '') + delta;
+      // Accumulate tokens and repaint at most once per frame instead of
+      // rebuilding the screen per token.
+      final reply = StringBuffer();
+      int lastPaintMs = 0;
+      void paintReply() {
+        _safeSetState(() {
+          _chatMessages.last['content'] = reply.toString();
         });
         _scrollToBottom();
-      });
+      }
+
+      await _chatLlm!.chatStream(text, (delta) {
+        reply.write(delta);
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        if (nowMs - lastPaintMs >= 33) {
+          lastPaintMs = nowMs;
+          paintReply();
+        }
+      }, shouldContinue: () => mounted);
+      if (mounted) {
+        paintReply();
+      }
       int endTime = DateTime.now().millisecondsSinceEpoch;
-      setState(() {
+      _safeSetState(() {
         predict_result =
             "processing time : ${(endTime - startTime) / 1000} sec";
       });
     } catch (e) {
       _showError("Inference Error: $e");
     } finally {
+      _chatGenerating = false;
       if (mounted) {
-        setState(() {
-          _chatGenerating = false;
-        });
+        _safeSetState(() {});
       } else {
-        _chatGenerating = false;
+        // The screen was closed while streaming; dispose deferred the
+        // close to us.
+        _chatLlm?.close();
+        _chatLlm = null;
       }
     }
   }
 
   void _ailiaLargeLanguageModelGemma3Multimodal() async {
-    MultimodalLargeLanguageModel multimodalLLM =
-        MultimodalLargeLanguageModel();
+    MultimodalLargeLanguageModel multimodalLLM = MultimodalLargeLanguageModel();
     List<String> modelList = multimodalLLM.getModelList();
     _displayDownloadBegin();
     downloadModelFromModelList(0, modelList, () async {
@@ -1650,7 +1490,7 @@ class _DemoScreenState extends State<DemoScreen> {
         if (_capturedPath != null) {
           imagePath = _capturedPath!;
         } else {
-          setState(() {
+          _safeSetState(() {
             predict_result = "Downloading sample image...";
           });
           File imageFile = await MultimodalLargeLanguageModel.downloadFile(
@@ -1660,14 +1500,13 @@ class _DemoScreenState extends State<DemoScreen> {
         }
 
         Uint8List imageBytes = await File(imagePath).readAsBytes();
-        if (_capturedPath == null) {
-          // The captured frame is already shown as the frozen camera
-          // preview; only show the sample image separately.
-          image = await decodeImageFromList(imageBytes);
-        }
+        // The captured frame is already shown as the frozen camera
+        // preview; only show the sample image separately.
+        image = _capturedPath == null
+            ? await decodeImageFromList(imageBytes)
+            : null;
 
-        setState(() {
-          isImageloaded = _capturedPath == null;
+        _safeSetState(() {
           predict_result = "Models downloaded. Ready for inference.";
         });
 
@@ -1683,7 +1522,7 @@ class _DemoScreenState extends State<DemoScreen> {
   Future<void> _performGemma3MultimodalInference(
       MultimodalLargeLanguageModel multimodalLLM, String imagePath) async {
     try {
-      setState(() {
+      _safeSetState(() {
         predict_result = "Loading model with selected backend...";
       });
 
@@ -1706,7 +1545,7 @@ class _DemoScreenState extends State<DemoScreen> {
       String profileText =
           "processing time : ${(endTime - startTime) / 1000} sec";
 
-      setState(() {
+      _safeSetState(() {
         predict_result = "$inputText -> $outputText\n$profileText";
       });
 
@@ -1817,7 +1656,7 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   Widget _buildImage(BuildContext context) {
-    if (isImageloaded && image != null) {
+    if (image != null) {
       double screenHeight = MediaQuery.of(context).size.height;
       double height = screenHeight * 0.45;
       double width = height * image!.width / image!.height;
@@ -1847,7 +1686,7 @@ class _DemoScreenState extends State<DemoScreen> {
 
   Widget _buildWaveform() {
     final micActive = _supportsMic && _inputSource == InputSource.mic;
-    if (!micActive && !_showPlaybackWaveform) {
+    if (!micActive && _waveform.isEmpty) {
       return const SizedBox.shrink();
     }
     String recTime = '';
@@ -1877,8 +1716,7 @@ class _DemoScreenState extends State<DemoScreen> {
             width: double.infinity,
             height: 100,
             decoration: BoxDecoration(
-              border:
-                  Border.all(color: Theme.of(context).colorScheme.outline),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
               borderRadius: BorderRadius.circular(8),
             ),
             child: CustomPaint(
@@ -1894,7 +1732,7 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   Widget _buildTtsTextField() {
-    if (widget.model.category != 'Text To Speech') {
+    if (!widget.model.isTextToSpeech) {
       return const SizedBox.shrink();
     }
     return _panel(
@@ -1926,7 +1764,7 @@ class _DemoScreenState extends State<DemoScreen> {
   /// the generation failed. The status text is given one frame to render
   /// because the synthesis itself blocks the UI isolate.
   Future<bool> _runTtsGeneration(Future<void> Function() generate) async {
-    setState(() {
+    _safeSetState(() {
       _status = "Generating speech...";
     });
     await Future.delayed(const Duration(milliseconds: 50));
@@ -1936,7 +1774,7 @@ class _DemoScreenState extends State<DemoScreen> {
       _showError(e);
       return false;
     }
-    setState(() {
+    _safeSetState(() {
       _status = "";
     });
     return true;
@@ -1970,8 +1808,9 @@ class _DemoScreenState extends State<DemoScreen> {
               ),
               IconButton(
                 tooltip: 'Clear conversation',
-                onPressed:
-                    _chatGenerating || _chatMessages.isEmpty ? null : _clearChat,
+                onPressed: _chatGenerating || _chatMessages.isEmpty
+                    ? null
+                    : _clearChat,
                 icon: const Icon(Icons.delete_sweep, size: 20),
               ),
             ],
@@ -2032,8 +1871,7 @@ class _DemoScreenState extends State<DemoScreen> {
         children: [
           Row(
             children: [
-              Text('Transcript',
-                  style: Theme.of(context).textTheme.labelLarge),
+              Text('Transcript', style: Theme.of(context).textTheme.labelLarge),
               const Spacer(),
               IconButton(
                 tooltip: 'Copy transcript',
@@ -2050,7 +1888,7 @@ class _DemoScreenState extends State<DemoScreen> {
                 onPressed: _speechRecognitionActive
                     ? null
                     : () {
-                        setState(() {
+                        _safeSetState(() {
                           _transcript.clear();
                         });
                       },
@@ -2113,7 +1951,7 @@ class _DemoScreenState extends State<DemoScreen> {
               title: const Text('Use virtual memory'),
               value: _virtualMemory,
               onChanged: (v) {
-                setState(() {
+                _safeSetState(() {
                   _virtualMemory = v;
                 });
               },
@@ -2130,7 +1968,7 @@ class _DemoScreenState extends State<DemoScreen> {
                 onChanged: _speechRecognitionActive
                     ? null
                     : (v) {
-                        setState(() {
+                        _safeSetState(() {
                           _liveTranscribe = v;
                         });
                       },
@@ -2162,7 +2000,7 @@ class _DemoScreenState extends State<DemoScreen> {
         fit: BoxFit.fill,
         enableAudio: false,
         onCameraInizialized: (CameraMacOSController controller) {
-          setState(() {
+          _safeSetState(() {
             _macCameraController = controller;
           });
           final size = controller.args.size;
@@ -2196,7 +2034,7 @@ class _DemoScreenState extends State<DemoScreen> {
             if (frozen)
               GestureDetector(
                 onTap: () {
-                  setState(() {
+                  _safeSetState(() {
                     _capturedBytes = null;
                     _capturedPath = null;
                   });
@@ -2350,13 +2188,15 @@ class WaveformPainter extends CustomPainter {
   }
 }
 
-/// One camera frame as tightly packed RGB bytes.
+/// One camera frame as tightly packed RGB bytes, optionally with a
+/// prebuilt RGBA copy for display.
 class _CameraFrame {
-  _CameraFrame(this.rgb, this.width, this.height);
+  _CameraFrame(this.rgb, this.width, this.height, {this.rgba});
 
   final Uint8List rgb;
   final int width;
   final int height;
+  final Uint8List? rgba;
 }
 
 /// Draws realtime inference results (bounding boxes, masks, labels)
@@ -2398,8 +2238,8 @@ class CameraOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, ui.Size size) {
     final frame = frameImage;
     if (frame != null) {
-      final src = Rect.fromLTWH(
-          0, 0, frame.width.toDouble(), frame.height.toDouble());
+      final src =
+          Rect.fromLTWH(0, 0, frame.width.toDouble(), frame.height.toDouble());
       final dst = Rect.fromLTWH(0, 0, size.width, size.height);
       canvas.drawImageRect(frame, src, dst, Paint());
     }
@@ -2461,8 +2301,7 @@ class CameraOverlayPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    final rect =
-        Rect.fromLTWH(x, y, painter.width + 8, painter.height + 4);
+    final rect = Rect.fromLTWH(x, y, painter.width + 8, painter.height + 4);
     canvas.drawRect(rect, Paint()..color = bg.withOpacity(0.7));
     painter.paint(canvas, Offset(x + 4, y + 2));
   }
@@ -2486,8 +2325,8 @@ class ImageEditor extends CustomPainter {
 
   @override
   void paint(Canvas canvas, ui.Size size) {
-    final src = Rect.fromLTWH(
-        0, 0, image.width.toDouble(), image.height.toDouble());
+    final src =
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
     final dst = Rect.fromLTWH(0, 0, size.width, size.height);
     canvas.drawImageRect(image, src, dst, Paint());
   }

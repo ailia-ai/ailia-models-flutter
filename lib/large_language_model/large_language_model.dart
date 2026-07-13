@@ -125,8 +125,11 @@ class LargeLanguageModel {
 
   /// Same as [chat] but reports each generated token through [onDelta]
   /// and yields to the event loop so the UI can update while generating.
+  /// Generation stops early when [shouldContinue] returns false (e.g.
+  /// the screen owning the model has been disposed).
   Future<String> chatStream(
-      String inputText, void Function(String delta) onDelta) async {
+      String inputText, void Function(String delta) onDelta,
+      {bool Function()? shouldContinue}) async {
     if (_ailiaLLMModel.contextFull()){
       messages = List<Map<String, dynamic>>.empty(growable:true);
       _addSystemPrompt();
@@ -136,7 +139,7 @@ class LargeLanguageModel {
 
     _ailiaLLMModel.setPrompt(messages);
     String text = "";
-    while(true){
+    while(shouldContinue == null || shouldContinue()){
       String? deltaText = _ailiaLLMModel.generate();
       if (deltaText == null){
         break;

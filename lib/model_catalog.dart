@@ -10,30 +10,82 @@ class ModelInfo {
   final String category;
   final ModelInputKind input;
 
-  const ModelInfo(this.id, this.name, this.category, this.input);
+  /// Bundled sample image shown before the first run (image demos).
+  final String? sampleAsset;
+
+  /// Initial text for the text-to-speech input box.
+  final String? defaultTtsText;
+
+  const ModelInfo(this.id, this.name, this.category, this.input,
+      {this.sampleAsset, this.defaultTtsText});
+
+  bool get isSpeechToText => category == 'Speech To Text';
+  bool get isTextToSpeech => category == 'Text To Speech';
+
+  /// Text-only LLMs get the multi-turn chat UI.
+  bool get isChat =>
+      category == 'Large Language Model' && input == ModelInputKind.text;
 }
 
 const List<ModelInfo> modelCatalog = [
-  ModelInfo('resnet18', 'ResNet18', 'Image Classification', ModelInputKind.image),
-  ModelInfo('sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image),
-  ModelInfo('u2net', 'U-2-Net', 'Background Removal', ModelInputKind.image),
-  ModelInfo('yolox', 'YOLOX', 'Object Detection', ModelInputKind.image),
-  ModelInfo('whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
-  ModelInfo('whisper_small', 'Whisper Small', 'Speech To Text', ModelInputKind.audio),
-  ModelInfo('whisper_medium', 'Whisper Medium', 'Speech To Text', ModelInputKind.audio),
-  ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo', 'Speech To Text', ModelInputKind.audio),
-  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text', ModelInputKind.audio),
-  ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing', ModelInputKind.text),
-  ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing', ModelInputKind.text),
-  ModelInfo('fugumt-ja-en', 'FuguMT JA-EN', 'Natural Language Processing', ModelInputKind.text),
-  ModelInfo('tacotron2', 'Tacotron2', 'Text To Speech', ModelInputKind.text),
-  ModelInfo('gpt-sovits-ja', 'GPT-SoVITS JA', 'Text To Speech', ModelInputKind.text),
-  ModelInfo('gpt-sovits-en', 'GPT-SoVITS EN', 'Text To Speech', ModelInputKind.text),
-  ModelInfo('gpt-sovits-zh', 'GPT-SoVITS ZH', 'Text To Speech', ModelInputKind.text),
-  ModelInfo('gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
-  ModelInfo('gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text),
-  ModelInfo('gemma3-multimodal', 'Gemma 3 4B Multimodal', 'Large Language Model', ModelInputKind.imageText),
+  ModelInfo(
+      'resnet18', 'ResNet18', 'Image Classification', ModelInputKind.image,
+      sampleAsset: 'assets/clock.jpg'),
+  ModelInfo(
+      'sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image,
+      sampleAsset: 'assets/truck.jpg'),
+  ModelInfo('u2net', 'U-2-Net', 'Background Removal', ModelInputKind.image,
+      sampleAsset: 'assets/input_u2net.png'),
+  ModelInfo('yolox', 'YOLOX', 'Object Detection', ModelInputKind.image,
+      sampleAsset: 'assets/clock.jpg'),
+  ModelInfo(
+      'whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
+  ModelInfo(
+      'whisper_small', 'Whisper Small', 'Speech To Text', ModelInputKind.audio),
+  ModelInfo('whisper_medium', 'Whisper Medium', 'Speech To Text',
+      ModelInputKind.audio),
+  ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo',
+      'Speech To Text', ModelInputKind.audio),
+  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text',
+      ModelInputKind.audio),
+  ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing',
+      ModelInputKind.text),
+  ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing',
+      ModelInputKind.text),
+  ModelInfo('fugumt-ja-en', 'FuguMT JA-EN', 'Natural Language Processing',
+      ModelInputKind.text),
+  ModelInfo('tacotron2', 'Tacotron2', 'Text To Speech', ModelInputKind.text,
+      defaultTtsText: 'Hello world.'),
+  ModelInfo(
+      'gpt-sovits-ja', 'GPT-SoVITS JA', 'Text To Speech', ModelInputKind.text,
+      defaultTtsText: 'こんにちは。今日はいい天気ですね。'),
+  ModelInfo(
+      'gpt-sovits-en', 'GPT-SoVITS EN', 'Text To Speech', ModelInputKind.text,
+      defaultTtsText: 'Hello world.'),
+  ModelInfo(
+      'gpt-sovits-zh', 'GPT-SoVITS ZH', 'Text To Speech', ModelInputKind.text,
+      defaultTtsText: '你好世界。'),
+  ModelInfo(
+      'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
+  ModelInfo(
+      'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text),
+  ModelInfo('gemma3-multimodal', 'Gemma 3 4B Multimodal',
+      'Large Language Model', ModelInputKind.imageText),
 ];
+
+/// Remote (folder, filename) pairs for the image demos, shared by the
+/// still-image path, the realtime path, and the home screen badge so
+/// each file name exists in exactly one place.
+const Map<String, List<(String, String)>> imageModelFiles = {
+  'yolox': [('yolox', 'yolox_s.opt.onnx')],
+  'resnet18': [('resnet18', 'resnet18.onnx')],
+  'u2net': [('u2net', 'u2net_opset11.onnx')],
+  'sam2': [
+    ('segment-anything-2', 'image_encoder_hiera_t.onnx'),
+    ('segment-anything-2', 'prompt_encoder_hiera_t.onnx'),
+    ('segment-anything-2', 'mask_decoder_hiera_t.onnx'),
+  ],
+};
 
 IconData categoryIcon(String category) {
   switch (category) {

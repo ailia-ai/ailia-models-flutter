@@ -9,11 +9,10 @@ import 'demo_screen.dart';
 
 /// Representative file per model, used to show a "downloaded" badge on
 /// the model card. Paths are relative to the app's model directory.
+/// Image demos derive their marker from [imageModelFiles]; the entries
+/// here cover the remaining models (using a file unique to each model,
+/// e.g. the language-specific dictionary for GPT-SoVITS EN/ZH).
 const Map<String, String> _markerFiles = {
-  'resnet18': 'resnet18.onnx',
-  'sam2': 'image_encoder_hiera_t.onnx',
-  'u2net': 'u2net_opset11.onnx',
-  'yolox': 'yolox_s.opt.onnx',
   'whisper_tiny': 'encoder_tiny.opt3.onnx',
   'whisper_small': 'encoder_small.opt3.onnx',
   'whisper_medium': 'encoder_medium.opt3.onnx',
@@ -24,7 +23,7 @@ const Map<String, String> _markerFiles = {
   'fugumt-ja-en': 'fugumt-ja-en/encoder_model.onnx',
   'tacotron2': 'waveglow.onnx',
   'gpt-sovits-ja': 'vits.onnx',
-  'gpt-sovits-en': 'vits.onnx',
+  'gpt-sovits-en': 'homographs.en',
   'gpt-sovits-zh': 'jieba.dict.utf8',
   'gemma2': 'gemma-2-2b-it-Q4_K_M.gguf',
   'gemma4-e2b': 'gemma-4-E2B-it-Q4_K_M.gguf',
@@ -50,10 +49,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refreshDownloaded() async {
+    // Resolve the model directory once instead of a platform-channel
+    // round trip per model.
+    final base = await getModelPath('');
+    final markers = {
+      for (final entry in imageModelFiles.entries)
+        entry.key: entry.value.first.$2,
+      ..._markerFiles,
+    };
     final downloaded = <String>{};
-    for (final entry in _markerFiles.entries) {
-      final path = await getModelPath(entry.value);
-      if (File(path).existsSync()) {
+    for (final entry in markers.entries) {
+      if (File('$base${entry.value}').existsSync()) {
         downloaded.add(entry.key);
       }
     }
