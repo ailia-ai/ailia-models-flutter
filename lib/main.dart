@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
+import 'utils/screenshot.dart';
 
 void main() {
   runApp(const MyApp());
+  scheduleAutoScreenshot();
 }
 
 class MyApp extends StatelessWidget {
@@ -17,6 +19,10 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+      ),
+      builder: (context, child) => RepaintBoundary(
+        key: screenshotBoundaryKey,
+        child: child,
       ),
       home: const HomeScreen(),
     );
