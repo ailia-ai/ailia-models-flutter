@@ -10,6 +10,7 @@ import 'package:image/image.dart' as img;
 import '../../background_removal/u2net/u2net.dart';
 import '../../image_classification/image_classification_sample.dart';
 import '../../image_segmentation/segment-anything-2/segment_image.dart';
+import '../../image_segmentation/segment-anything-3.1/segment_anything_3_1.dart';
 import '../../model_catalog.dart';
 import '../../object_detection/detic.dart';
 import '../../object_detection/yolox.dart';
@@ -67,6 +68,14 @@ class _VisionDemoPageState extends State<VisionDemoPage>
 
   bool get _isSam2 => widget.model.id == 'sam2';
 
+  // SAM 3.1 segments instances matching a text prompt. After a
+  // still-image run the model is kept open with the encoded features
+  // (encoder released), so a new prompt only re-runs the grounding
+  // model.
+  bool get _isSam3 => widget.model.id == 'sam3.1';
+  final TextEditingController _sam3Text = TextEditingController();
+  SegmentAnything3? _sam3Still;
+
   // Detic's recognition resolution is selectable (SwinB is heavy, so
   // the lower resolution trades accuracy for speed).
   bool get _isDetic => widget.model.id == 'detic';
@@ -75,6 +84,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   @override
   void initState() {
     super.initState();
+    _sam3Text.text = widget.model.defaultInputText ?? '';
     _loadSampleImage();
   }
 
@@ -83,6 +93,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     _realtimeActive = false;
     _sam2Still?.close();
     _sam2Still = null;
+    _sam3Still?.close();
+    _sam3Still = null;
+    _sam3Text.dispose();
     _camera.dispose();
     _session.dispose();
     super.dispose();
@@ -102,6 +115,11 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     _sam2Still = null;
     _sam2StillInput = null;
     _sam2Point = const Offset(0.5, 0.5);
+  }
+
+  void _resetSam3Session() {
+    _sam3Still?.close();
+    _sam3Still = null;
   }
 
   void _clearRealtimeResults() {
@@ -130,6 +148,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   Future<void> _switchSource(bool useCamera) async {
     if (useCamera) {
       _resetSam2Session();
+      _resetSam3Session();
       safeSetState(() {
         _useCamera = true;
         _image = null;
@@ -139,6 +158,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     } else {
       _realtimeActive = false;
       _resetSam2Session();
+      _resetSam3Session();
       await _camera.close();
       safeSetState(() {
         _useCamera = false;
@@ -156,6 +176,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         switch (widget.model.id) {
           case "sam2":
             await _runSam2Still();
+            break;
+          case "sam3.1":
+            await _runSam3Still();
             break;
           case "u2net":
             await _runU2NetStill();
@@ -253,6 +276,82 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       _session.showResult("mask decoder : ${(endTime - startTime) / 1000} sec");
     } finally {
       _sam2Busy = false;
+    }
+  }
+
+  /// Runs SAM 3.1 on the sample image with the current text prompt.
+  /// The first run downloads the models and encodes the image; later
+  /// runs reuse the cached image features and only re-run the
+  /// grounding model with the new prompt.
+  Future<void> _runSam3Still() async {
+    final text = _sam3Text.text.trim();
+    if (text.isEmpty) {
+      _session.showResult('Enter a text prompt.');
+      return;
+    }
+
+    if (_sam3Still == null) {
+      await _loadSampleImage();
+
+      final files =
+          await _session.downloadModelFiles(imageModelFiles['sam3.1']!);
+      if (files == null) {
+        return;
+      }
+
+      final sam3 = SegmentAnything3();
+      sam3.open(files[0].path, files[1].path, envId: selectedEnvId);
+
+      _session.setStatus("Encoding image...");
+      // Let the status render before the encoder blocks the UI isolate.
+      await Future.delayed(const Duration(milliseconds: 50));
+      final inputImage = await uiImageToImage(_image!);
+      try {
+        await sam3.setImage(inputImage);
+      } catch (e) {
+        sam3.close();
+        _session.showError(e);
+        return;
+      }
+      if (!mounted) {
+        sam3.close();
+        return;
+      }
+      // The features are cached, so the multi-GB encoder can be freed;
+      // new prompts only need the grounding model.
+      sam3.releaseEncoder();
+      _sam3Still = sam3;
+    }
+
+    _session.setStatus("Running grounding...");
+    await Future.delayed(const Duration(milliseconds: 50));
+    try {
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      final result = _sam3Still!.run(text);
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+
+      final overlay = result.maskOverlay == null
+          ? null
+          : await imageToUiImage(result.maskOverlay!);
+      if (!mounted) {
+        return;
+      }
+      _session.clearStatus();
+      safeSetState(() {
+        _rtBoxes = result.boxes;
+        _rtCategories = List.filled(result.boxes.length, text);
+        _rtOverlayImage = overlay;
+      });
+
+      String resultSubText = result.boxes
+          .map((e) => "$text ${(e.prob * 100).toStringAsFixed(0)}%")
+          .join("\n");
+      String profileText =
+          "grounding : ${(endTime - startTime) / 1000} sec";
+      _session.showResult(
+          "${result.boxes.length} instances\n$resultSubText\n$profileText");
+    } catch (e) {
+      _session.showError(e);
     }
   }
 
@@ -497,6 +596,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         case "sam2":
           await _realtimeSam2();
           break;
+        case "sam3.1":
+          await _realtimeSam3();
+          break;
         case "detic":
           await _realtimeDetic();
           break;
@@ -696,6 +798,47 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     );
   }
 
+  Future<void> _realtimeSam3() async {
+    final sam3 = SegmentAnything3();
+    await _runRealtimeModel(
+      models: imageModelFiles['sam3.1']!,
+      openModel: (files) =>
+          sam3.open(files[0].path, files[1].path, envId: selectedEnvId),
+      closeModel: sam3.close,
+      onFrame: (frame) async {
+        // The prompt is re-read every frame, so it can be edited while
+        // realtime inference is running.
+        final text = _sam3Text.text.trim();
+        if (text.isEmpty) {
+          _session.showResult('Enter a text prompt.');
+          return;
+        }
+        int startTime = DateTime.now().millisecondsSinceEpoch;
+        await sam3.setImage(frame.toImage());
+        final result = sam3.run(text);
+        int endTime = DateTime.now().millisecondsSinceEpoch;
+        if (!mounted) {
+          return;
+        }
+        final frameImage = await frame.toUiImage();
+        final overlay = result.maskOverlay == null
+            ? null
+            : await imageToUiImage(result.maskOverlay!);
+        if (!mounted) {
+          return;
+        }
+        safeSetState(() {
+          _rtBoxes = result.boxes;
+          _rtCategories = List.filled(result.boxes.length, text);
+          _rtFrameImage = frameImage;
+          _rtOverlayImage = overlay;
+        });
+        _session.showResult(
+            "${result.boxes.length} instances / ${endTime - startTime} ms per frame");
+      },
+    );
+  }
+
   Future<void> _realtimeDetic() async {
     final detic = Detic();
     await _runRealtimeModel(
@@ -817,6 +960,17 @@ class _VisionDemoPageState extends State<VisionDemoPage>
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: _buildDeticResolutionSelector(),
+          ),
+        if (_isSam3)
+          DemoPanel(
+            child: TextField(
+              controller: _sam3Text,
+              decoration: const InputDecoration(
+                labelText: 'Text prompt',
+                hintText: 'e.g. truck',
+                border: OutlineInputBorder(),
+              ),
+            ),
           ),
         const SizedBox(height: 8),
         if (_useCamera)
