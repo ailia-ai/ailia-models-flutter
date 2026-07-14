@@ -41,6 +41,8 @@ const List<ModelInfo> modelCatalog = [
       sampleAsset: 'assets/clock.jpg'),
   ModelInfo('detic', 'Detic', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/desk.jpg'),
+  ModelInfo('bytetrack', 'ByteTrack', 'Object Tracking', ModelInputKind.image,
+      sampleAsset: 'assets/clock.jpg'),
   ModelInfo(
       'whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
   ModelInfo(
@@ -86,6 +88,7 @@ const List<ModelInfo> modelCatalog = [
 /// each file name exists in exactly one place.
 const Map<String, List<(String, String)>> imageModelFiles = {
   'yolox': [('yolox', 'yolox_s.opt.onnx')],
+  'bytetrack': [('yolox', 'yolox_s.opt.onnx')],
   'detic': [('detic', 'Detic_C2_SwinB_896_4x_IN-21K+COCO_lvis_op16.onnx')],
   'resnet18': [('resnet18', 'resnet18.onnx')],
   'u2net': [('u2net', 'u2net_opset11.onnx')],
@@ -106,6 +109,8 @@ IconData categoryIcon(String category) {
       return Icons.filter_hdr;
     case 'Object Detection':
       return Icons.center_focus_strong;
+    case 'Object Tracking':
+      return Icons.route;
     case 'Audio Processing':
       return Icons.graphic_eq;
     case 'Speech To Text':
@@ -128,6 +133,7 @@ Color categoryColor(BuildContext context, String category) {
     case 'Image Segmentation':
     case 'Background Removal':
     case 'Object Detection':
+    case 'Object Tracking':
       return scheme.primary;
     case 'Audio Processing':
     case 'Speech To Text':
