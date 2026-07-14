@@ -119,8 +119,10 @@ class ObjectDetectionYoloX {
   List<AiliaDetectorObject> run(
     Uint8List data,
     int imageWidth,
-    int imageHeight,
-  ) {
+    int imageHeight, {
+    double threshold = 0.4,
+    double iou = 0.45,
+  }) {
     if (!available) {
       throw ("Model not opened");
     }
@@ -129,8 +131,8 @@ class ObjectDetectionYoloX {
       print("Resize $imageWidth $imageHeight");
     }
 
-    List<AiliaDetectorObject> ret =
-        ailiaModelImage!.run(data, imageWidth, imageHeight);
+    List<AiliaDetectorObject> ret = ailiaModelImage!
+        .run(data, imageWidth, imageHeight, threshold: threshold, iou: iou);
     return ret;
   }
 }

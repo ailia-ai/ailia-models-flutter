@@ -11,8 +11,10 @@
 #include <ailia_llm/ailia_llm_plugin.h>
 #include <ailia_speech/ailia_speech_plugin.h>
 #include <ailia_tokenizer/ailia_tokenizer_plugin.h>
+#include <ailia_tracker/ailia_tracker_plugin.h>
 #include <ailia_voice/ailia_voice_plugin.h>
 #include <audioplayers_linux/audioplayers_linux_plugin.h>
+#include <record_linux/record_linux_plugin.h>
 
 void fl_register_plugins(FlPluginRegistry* registry) {
   g_autoptr(FlPluginRegistrar) ailia_registrar =
@@ -30,10 +32,16 @@ void fl_register_plugins(FlPluginRegistry* registry) {
   g_autoptr(FlPluginRegistrar) ailia_tokenizer_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "AiliaTokenizerPlugin");
   ailia_tokenizer_plugin_register_with_registrar(ailia_tokenizer_registrar);
+  g_autoptr(FlPluginRegistrar) ailia_tracker_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "AiliaTrackerPlugin");
+  ailia_tracker_plugin_register_with_registrar(ailia_tracker_registrar);
   g_autoptr(FlPluginRegistrar) ailia_voice_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "AiliaVoicePlugin");
   ailia_voice_plugin_register_with_registrar(ailia_voice_registrar);
   g_autoptr(FlPluginRegistrar) audioplayers_linux_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "AudioplayersLinuxPlugin");
   audioplayers_linux_plugin_register_with_registrar(audioplayers_linux_registrar);
+  g_autoptr(FlPluginRegistrar) record_linux_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "RecordLinuxPlugin");
+  record_linux_plugin_register_with_registrar(record_linux_registrar);
 }

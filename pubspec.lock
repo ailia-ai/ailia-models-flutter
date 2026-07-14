@@ -46,6 +46,15 @@ packages:
       url: "https://github.com/ailia-ai/ailia-tokenizer-flutter.git"
     source: git
     version: "1.6.0"
+  ailia_tracker:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: main
+      resolved-ref: "266428a09ecc9184cb16f989696e58fd8f5d6798"
+      url: "https://github.com/ailia-ai/ailia-tracker-flutter.git"
+    source: git
+    version: "1.10.0"
   ailia_voice:
     dependency: "direct main"
     description:

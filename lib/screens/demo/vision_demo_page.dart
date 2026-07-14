@@ -13,6 +13,7 @@ import '../../image_segmentation/segment-anything-2/segment_image.dart';
 import '../../model_catalog.dart';
 import '../../object_detection/detic.dart';
 import '../../object_detection/yolox.dart';
+import '../../object_tracking/bytetrack.dart';
 import '../../utils/image_util.dart';
 import 'camera_input.dart';
 import 'demo_session.dart';
@@ -43,6 +44,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   bool _realtimeActive = false;
   List<AiliaDetectorObject> _rtBoxes = [];
   List<String> _rtCategories = const [];
+  List<TrackedBox> _rtTracked = [];
   ui.Image? _rtOverlayImage;
   // The exact camera frame the current results were computed on. Shown
   // instead of the live preview so results never lag behind the video.
@@ -104,6 +106,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
 
   void _clearRealtimeResults() {
     _rtBoxes = [];
+    _rtTracked = [];
     _rtOverlayImage = null;
     _rtFrameImage = null;
     _rtLabel = '';
@@ -165,6 +168,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
             break;
           case "detic":
             await _runDeticStill();
+            break;
+          case "bytetrack":
+            await _runByteTrackStill();
             break;
         }
       });
@@ -348,6 +354,67 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     }
   }
 
+  /// A distinct color per tracking ID (golden-angle hue steps keep
+  /// consecutive IDs visually far apart).
+  static Color _trackColor(int id) =>
+      HSVColor.fromAHSV(1, (id * 137.508) % 360, 1, 1).toColor();
+
+  List<TrackedBox> _toTrackedBoxes(
+      List<ByteTrackResult> results, List<String> categories) {
+    return results.map((r) {
+      final obj = r.object;
+      final name = obj.category < categories.length
+          ? categories[obj.category]
+          : '${obj.category}';
+      return TrackedBox(
+        rect: Rect.fromLTWH(obj.x, obj.y, obj.w, obj.h),
+        color: _trackColor(obj.id),
+        label: '$name ${(obj.prob * 100).toStringAsFixed(0)}% id:${obj.id}',
+        trail: r.trail,
+      );
+    }).toList();
+  }
+
+  Future<void> _runByteTrackStill() async {
+    final data = await rootBundle.load(widget.model.sampleAsset!);
+    final imData = data.buffer.asUint8List();
+    final loaded = await decodeImageFromList(imData);
+    safeSetState(() {
+      _image = loaded;
+    });
+
+    final files =
+        await _session.downloadModelFiles(imageModelFiles['bytetrack']!);
+    if (files == null) {
+      return;
+    }
+    final tracker = ObjectTrackingByteTrack();
+    tracker.open(files[0], selectedEnvId);
+    try {
+      final decoded = img.decodeImage(imData)!;
+      final imageWithoutAlpha = decoded.convert(numChannels: 3);
+      final buffer = imageWithoutAlpha.getBytes(order: img.ChannelOrder.rgb);
+
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      final res = tracker.run(buffer, decoded.width, decoded.height);
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+      String profileText =
+          "processing time : ${(endTime - startTime) / 1000} sec";
+
+      String resultSubText = res
+          .map((r) =>
+              "id:${r.object.id} label:${tracker.category[r.object.category]} p:${r.object.prob}")
+          .join("\n");
+
+      safeSetState(() {
+        _rtTracked = _toTrackedBoxes(res, tracker.category);
+      });
+      _session.showResult("$resultSubText\n$profileText");
+    } finally {
+      tracker.close();
+    }
+  }
+
   Future<void> _runDeticStill() async {
     await _loadSampleImage();
 
@@ -433,6 +500,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         case "detic":
           await _realtimeDetic();
           break;
+        case "bytetrack":
+          await _realtimeByteTrack();
+          break;
       }
     } catch (e) {
       _session.showError(e);
@@ -502,6 +572,33 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         safeSetState(() {
           _rtBoxes = res;
           _rtCategories = yolox.category;
+          _rtFrameImage = frameImage;
+        });
+        _session.showResult(
+            "${res.length} objects / ${endTime - startTime} ms per frame");
+      },
+    );
+  }
+
+  Future<void> _realtimeByteTrack() async {
+    final tracker = ObjectTrackingByteTrack();
+    await _runRealtimeModel(
+      models: imageModelFiles['bytetrack']!,
+      openModel: (files) => tracker.open(files[0], selectedEnvId),
+      closeModel: tracker.close,
+      onFrame: (frame) async {
+        int startTime = DateTime.now().millisecondsSinceEpoch;
+        final res = tracker.run(frame.rgb, frame.width, frame.height);
+        int endTime = DateTime.now().millisecondsSinceEpoch;
+        if (!mounted) {
+          return;
+        }
+        final frameImage = await frame.toUiImage();
+        if (!mounted) {
+          return;
+        }
+        safeSetState(() {
+          _rtTracked = _toTrackedBoxes(res, tracker.category);
           _rtFrameImage = frameImage;
         });
         _session.showResult(
@@ -690,17 +787,20 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     final samInteractive = _isSam2 && _sam2Still != null;
     return StillImageBox(
       image: image,
-      overlay:
-          (_rtBoxes.isNotEmpty || _rtOverlayImage != null || samInteractive)
-              ? CustomPaint(
-                  painter: CameraOverlayPainter(
-                    boxes: _rtBoxes,
-                    categories: _rtCategories,
-                    overlayImage: _rtOverlayImage,
-                    marker: samInteractive ? _sam2Point : null,
-                  ),
-                )
-              : null,
+      overlay: (_rtBoxes.isNotEmpty ||
+              _rtTracked.isNotEmpty ||
+              _rtOverlayImage != null ||
+              samInteractive)
+          ? CustomPaint(
+              painter: CameraOverlayPainter(
+                boxes: _rtBoxes,
+                categories: _rtCategories,
+                trackedBoxes: _rtTracked,
+                overlayImage: _rtOverlayImage,
+                marker: samInteractive ? _sam2Point : null,
+              ),
+            )
+          : null,
       // Tap to segment at that point using the cached image features.
       onTapNormalized: samInteractive ? _runSam2AtPoint : null,
     );
@@ -730,6 +830,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
               painter: CameraOverlayPainter(
                 boxes: _rtBoxes,
                 categories: _rtCategories,
+                trackedBoxes: _rtTracked,
                 frameImage: _rtFrameImage,
                 overlayImage: _rtOverlayImage,
                 label: _rtLabel,

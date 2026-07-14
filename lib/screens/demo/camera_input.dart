@@ -801,12 +801,30 @@ String _cameraDisplayName(List<CameraDescription> cameras, int index) {
   return name;
 }
 
+/// One object-tracking result to draw: a bounding box colored by its
+/// tracking ID and the recent trajectory of the box center. All
+/// coordinates are normalized to 0..1.
+class TrackedBox {
+  const TrackedBox({
+    required this.rect,
+    required this.color,
+    required this.label,
+    this.trail = const [],
+  });
+
+  final Rect rect;
+  final Color color;
+  final String label;
+  final List<Offset> trail;
+}
+
 /// Draws realtime inference results (bounding boxes, masks, labels)
 /// on top of the live camera preview or a still image.
 class CameraOverlayPainter extends CustomPainter {
   CameraOverlayPainter({
     required this.boxes,
     required this.categories,
+    this.trackedBoxes = const [],
     this.frameImage,
     this.overlayImage,
     this.label = '',
@@ -815,6 +833,7 @@ class CameraOverlayPainter extends CustomPainter {
 
   final List<AiliaDetectorObject> boxes;
   final List<String> categories;
+  final List<TrackedBox> trackedBoxes;
 
   /// The processed camera frame, drawn opaquely under the results so the
   /// displayed image matches what the model actually saw.
@@ -877,6 +896,39 @@ class CameraOverlayPainter extends CustomPainter {
           rect.left, rect.top, color);
     }
 
+    for (final tracked in trackedBoxes) {
+      final rect = Rect.fromLTWH(
+        tracked.rect.left * size.width,
+        tracked.rect.top * size.height,
+        tracked.rect.width * size.width,
+        tracked.rect.height * size.height,
+      );
+      if (tracked.trail.length >= 2) {
+        final path = Path();
+        for (int i = 0; i < tracked.trail.length; i++) {
+          final p = Offset(tracked.trail[i].dx * size.width,
+              tracked.trail[i].dy * size.height);
+          i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+        }
+        canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..strokeJoin = StrokeJoin.round
+            ..color = tracked.color,
+        );
+      }
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = tracked.color,
+      );
+      _drawLabel(canvas, tracked.label, rect.left, rect.top, tracked.color);
+    }
+
     if (label.isNotEmpty) {
       _drawLabel(canvas, label, 4, 4, Colors.black54);
     }
@@ -913,6 +965,7 @@ class CameraOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(CameraOverlayPainter oldDelegate) {
     return oldDelegate.boxes != boxes ||
+        oldDelegate.trackedBoxes != trackedBoxes ||
         oldDelegate.frameImage != frameImage ||
         oldDelegate.overlayImage != overlayImage ||
         oldDelegate.label != label ||

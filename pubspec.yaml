@@ -61,6 +61,11 @@ dependencies:
       url: https://github.com/ailia-ai/ailia-llm-flutter.git
       ref: main
 
+  ailia_tracker:
+    git:
+      url: https://github.com/ailia-ai/ailia-tracker-flutter.git
+      ref: main
+
   path_provider:
   wav:
   image:

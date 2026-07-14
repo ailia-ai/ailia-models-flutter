@@ -73,6 +73,12 @@ flutter run
 |:-----------|------------:|:------------:|:------------:|:------------:|
 |[yolox](/lib/object_detection/) | [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) | Pytorch | 1.2.6 and later | [EN](https://tech.ailia.ai/en/yolox-object-detection-model-exceeding-yolov5-d6cea6d3c4bc/) [JP](https://tech.ailia.ai/yolox-yolov5%E3%82%92%E8%B6%85%E3%81%88%E3%82%8B%E7%89%A9%E4%BD%93%E6%A4%9C%E5%87%BA%E3%83%A2%E3%83%87%E3%83%AB-e9706e15fef2) |
 
+### Object Tracking
+
+| | Model | Exported From | Supported Ailia Version | Blog |
+|:-----------|------------:|:------------:|:------------:|:------------:|
+|[bytetrack](/lib/object_tracking/) | [ByteTrack](https://github.com/ifzhang/ByteTrack) | ailia Tracker | 1.6.0 and later | |
+
 ### Text To Speech
 
 | Name | Detail | Exported From | Supported Ailia Version | Blog |
@@ -115,6 +121,11 @@ When integrating the ailia SDK into a new application, add the following to pubs
   ailia_llm:
     git:
       url: https://github.com/ailia-ai/ailia-llm-flutter.git
+      ref: main
+
+  ailia_tracker:
+    git:
+      url: https://github.com/ailia-ai/ailia-tracker-flutter.git
       ref: main
 ```
 
