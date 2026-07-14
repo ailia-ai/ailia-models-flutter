@@ -35,6 +35,9 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image,
       sampleAsset: 'assets/truck.jpg'),
+  ModelInfo('sam3.1', 'Segment Anything 3.1', 'Image Segmentation',
+      ModelInputKind.image,
+      sampleAsset: 'assets/truck.jpg', defaultInputText: 'truck'),
   ModelInfo('u2net', 'U-2-Net', 'Background Removal', ModelInputKind.image,
       sampleAsset: 'assets/input_u2net.png'),
   ModelInfo('yolox', 'YOLOX', 'Object Detection', ModelInputKind.image,
@@ -96,6 +99,10 @@ const Map<String, List<(String, String)>> imageModelFiles = {
     ('segment-anything-2', 'image_encoder_hiera_t.onnx'),
     ('segment-anything-2', 'prompt_encoder_hiera_t.onnx'),
     ('segment-anything-2', 'mask_decoder_hiera_t.onnx'),
+  ],
+  'sam3.1': [
+    ('segment-anything-3.1', 'sam3.1_image_encoder.opt.onnx'),
+    ('segment-anything-3.1', 'sam3.1_grounding.onnx'),
   ],
 };
 
