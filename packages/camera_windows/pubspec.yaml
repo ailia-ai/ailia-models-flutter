@@ -28,14 +28,9 @@ dependencies:
     sdk: flutter
   stream_transform: ^2.0.0
 
-dev_dependencies:
-  async: ^2.5.0
-  build_runner: ^2.4.9
-  flutter_test:
-    sdk: flutter
-  leak_tracker_flutter_testing: any
-  mockito: ^5.4.4
-  pigeon: ^26.1.0
+# The upstream dev_dependencies (pigeon, mockito, ...) are omitted
+# together with the pigeons/ and test/ directories: this vendored copy
+# is only consumed by the app, not developed as a standalone plugin.
 
 topics:
   - camera
