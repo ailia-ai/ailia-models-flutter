@@ -78,12 +78,6 @@ class CameraInput extends ChangeNotifier {
   /// preview box can match the realtime result frames.
   double trackedAspect = 4 / 3;
 
-  /// Milliseconds the last [grabFrame] spent capturing the photo and
-  /// decoding it, for profiling the realtime loop on platforms without
-  /// an image stream (zero on the stream paths).
-  int lastCaptureMs = 0;
-  int lastDecodeMs = 0;
-
   /// Last still capture (multimodal demo); the preview freezes on it.
   Uint8List? capturedBytes;
   String? capturedPath;
@@ -341,18 +335,13 @@ class CameraInput extends ChangeNotifier {
       // fork: no per-frame still capture (which took seconds per
       // frame), no JPEG round trip.
       try {
-        final grabStart = DateTime.now().millisecondsSinceEpoch;
         final preview = await CameraWindows.getPreviewFrame(plugin.cameraId);
         if (preview == null) {
           // No frame cached yet; the realtime loop retries.
           return null;
         }
-        final convertStart = DateTime.now().millisecondsSinceEpoch;
         final frame = _previewFrameToFrame(preview);
         if (frame != null) {
-          lastCaptureMs = convertStart - grabStart;
-          lastDecodeMs =
-              DateTime.now().millisecondsSinceEpoch - convertStart;
           updateAspectFrom(frame.width, frame.height);
           return frame;
         }
@@ -363,10 +352,8 @@ class CameraInput extends ChangeNotifier {
         // Same as above.
       }
     }
-    final captureStart = DateTime.now().millisecondsSinceEpoch;
     final shot = await plugin.takePicture();
     final bytes = await shot.readAsBytes();
-    final decodeStart = DateTime.now().millisecondsSinceEpoch;
     try {
       // Avoid piling up capture files while looping.
       await File(shot.path).delete();
@@ -375,8 +362,6 @@ class CameraInput extends ChangeNotifier {
     // always mirrors.
     final frame = await _decodePhotoToFrame(bytes,
         mirror: !kIsWeb && Platform.isWindows);
-    lastCaptureMs = decodeStart - captureStart;
-    lastDecodeMs = DateTime.now().millisecondsSinceEpoch - decodeStart;
     if (frame == null) {
       return null;
     }
