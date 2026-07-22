@@ -255,7 +255,7 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
       }
     });
     _session.showResult(
-        "processing time : ${(endTime - startTime) / 1000} sec for ${(wav.channels[0].length / wav.samplesPerSecond)} sec audio.");
+        "processing time : ${endTime - startTime} ms for ${(wav.channels[0].length / wav.samplesPerSecond)} sec audio.");
     _scrollToBottom();
   }
 

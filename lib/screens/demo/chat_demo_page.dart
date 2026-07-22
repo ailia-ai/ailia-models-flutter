@@ -184,7 +184,7 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
       }
       int endTime = DateTime.now().millisecondsSinceEpoch;
       _session
-          .showResult("processing time : ${(endTime - startTime) / 1000} sec");
+          .showResult("processing time : ${endTime - startTime} ms");
     } catch (e) {
       _session.showError("Inference Error: $e");
     } finally {

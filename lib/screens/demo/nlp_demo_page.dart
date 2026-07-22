@@ -87,7 +87,7 @@ class _NlpDemoPageState extends State<NlpDemoPage> {
     ];
     int endTime = DateTime.now().millisecondsSinceEpoch;
     String profileText =
-        "processing time : ${(endTime - startTime) / 1000} sec";
+        "processing time : ${endTime - startTime} ms";
     e5.close();
     double best = scores.reduce(math.max);
     final lines = [
@@ -127,7 +127,7 @@ class _NlpDemoPageState extends State<NlpDemoPage> {
         sourceFile, targetFile, jaEn, selectedEnvId);
     int endTime = DateTime.now().millisecondsSinceEpoch;
     String profileText =
-        "processing time : ${(endTime - startTime) / 1000} sec";
+        "processing time : ${endTime - startTime} ms";
 
     _session.showResult("$outputText\n$profileText");
   }
