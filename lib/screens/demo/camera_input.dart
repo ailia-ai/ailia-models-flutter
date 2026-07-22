@@ -333,25 +333,93 @@ class CameraInput extends ChangeNotifier {
       // Avoid piling up capture files while looping.
       await File(shot.path).delete();
     } catch (_) {}
-    var decoded = img.decodeImage(bytes);
-    if (decoded == null) {
+    // Mirror on Windows to match the preview, which camera_windows
+    // always mirrors.
+    final frame = await _decodePhotoToFrame(bytes,
+        mirror: !kIsWeb && Platform.isWindows);
+    if (frame == null) {
       return null;
-    }
-    // Android stores the capture rotation in EXIF, which decodeImage
-    // does not apply. Bake it so the frame (and the aspect tracked from
-    // it) is upright like the preview.
-    decoded = img.bakeOrientation(decoded);
-    if (Platform.isWindows) {
-      // Match the preview, which camera_windows always mirrors.
-      decoded = img.flipHorizontal(decoded);
     }
     // The photo aspect ratio can differ from the preview aspect ratio
     // (e.g. 4:3 photos with a 16:9 preview), which would letterbox the
     // displayed frames. Track the real frame aspect instead.
-    updateAspectFrom(decoded.width, decoded.height);
-    final rgbImage = decoded.convert(numChannels: 3);
-    return CameraFrame(rgbImage.getBytes(order: img.ChannelOrder.rgb),
-        rgbImage.width, rgbImage.height);
+    updateAspectFrom(frame.width, frame.height);
+    return frame;
+  }
+
+  /// Longest side of frames produced by the still-capture path. Photos
+  /// can be far larger than needed (e.g. 4K), and every extra pixel is
+  /// paid for in the per-frame convert / display / inference pipeline
+  /// while the models resize to at most 640px anyway.
+  static const int _maxFrameSide = 1280;
+
+  /// Decodes an encoded photo into a tightly packed RGB frame with the
+  /// engine codec, which decodes natively, downscales during decode and
+  /// applies EXIF orientation. package:image's pure-Dart decoder took
+  /// seconds per 4K photo, capping the realtime loop far below 1 FPS.
+  Future<CameraFrame?> _decodePhotoToFrame(Uint8List bytes,
+      {required bool mirror}) async {
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? codec;
+    ui.Image? image;
+    try {
+      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      int w = descriptor.width;
+      int h = descriptor.height;
+      final longest = w > h ? w : h;
+      if (longest > _maxFrameSide) {
+        final scale = _maxFrameSide / longest;
+        w = (w * scale).round();
+        h = (h * scale).round();
+      }
+      codec = await descriptor.instantiateCodec(
+          targetWidth: w, targetHeight: h);
+      final frameInfo = await codec.getNextFrame();
+      image = frameInfo.image;
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) {
+        return null;
+      }
+      w = image.width;
+      h = image.height;
+      final rgba =
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      final out = Uint8List(w * h * 3);
+      int o = 0;
+      for (int y = 0; y < h; y++) {
+        final rowBase = y * w * 4;
+        if (mirror) {
+          for (int x = w - 1; x >= 0; x--) {
+            final i = rowBase + x * 4;
+            out[o] = rgba[i];
+            out[o + 1] = rgba[i + 1];
+            out[o + 2] = rgba[i + 2];
+            o += 3;
+          }
+        } else {
+          int i = rowBase;
+          for (int x = 0; x < w; x++) {
+            out[o] = rgba[i];
+            out[o + 1] = rgba[i + 1];
+            out[o + 2] = rgba[i + 2];
+            o += 3;
+            i += 4;
+          }
+        }
+      }
+      return CameraFrame(out, w, h);
+    } catch (_) {
+      // Match the old decoder's behavior of returning null on a frame
+      // that cannot be decoded.
+      return null;
+    } finally {
+      image?.dispose();
+      codec?.dispose();
+      descriptor?.dispose();
+      buffer?.dispose();
+    }
   }
 
   /// Converts a streamed plugin frame (BGRA on iOS, YUV420 on Android)
@@ -413,14 +481,18 @@ class CameraInput extends ChangeNotifier {
     final plane = image.planes[0];
     final w = image.width;
     final h = image.height;
+    // Locals so the hot loop does plain array indexing.
+    final bytes = plane.bytes;
+    final rowStride = plane.bytesPerRow;
     final out = Uint8List(w * h * 3);
     int o = 0;
     for (int y = 0; y < h; y++) {
-      int i = y * plane.bytesPerRow;
+      int i = y * rowStride;
       for (int x = 0; x < w; x++) {
-        out[o++] = plane.bytes[i + 2];
-        out[o++] = plane.bytes[i + 1];
-        out[o++] = plane.bytes[i];
+        out[o] = bytes[i + 2];
+        out[o + 1] = bytes[i + 1];
+        out[o + 2] = bytes[i];
+        o += 3;
         i += 4;
       }
     }
@@ -434,24 +506,40 @@ class CameraInput extends ChangeNotifier {
     final yPlane = image.planes[0];
     final uPlane = image.planes[1];
     final vPlane = image.planes[2];
+    // Locals so the hot loop does plain array indexing.
+    final yBytes = yPlane.bytes;
+    final uBytes = uPlane.bytes;
+    final vBytes = vPlane.bytes;
+    final yStride = yPlane.bytesPerRow;
+    final uvStride = uPlane.bytesPerRow;
     final uvPixelStride = uPlane.bytesPerPixel ?? 1;
     final out = Uint8List(w * h * 3);
     int o = 0;
     for (int y = 0; y < h; y++) {
-      final yRow = y * yPlane.bytesPerRow;
-      final uvRow = (y >> 1) * uPlane.bytesPerRow;
-      for (int x = 0; x < w; x++) {
-        final yp = yPlane.bytes[yRow + x];
+      final yRow = y * yStride;
+      final uvRow = (y >> 1) * uvStride;
+      // 4:2:0 chroma is shared by two neighboring pixels, so the UV
+      // fetch and the BT.601 fixed-point offsets are computed once per
+      // pair.
+      int x = 0;
+      while (x < w) {
         final uvIndex = uvRow + (x >> 1) * uvPixelStride;
-        final up = uPlane.bytes[uvIndex] - 128;
-        final vp = vPlane.bytes[uvIndex] - 128;
-        // BT.601 YUV to RGB in fixed point.
-        final r = yp + ((1436 * vp) >> 10);
-        final g = yp - ((352 * up) >> 10) - ((731 * vp) >> 10);
-        final b = yp + ((1815 * up) >> 10);
-        out[o++] = r < 0 ? 0 : (r > 255 ? 255 : r);
-        out[o++] = g < 0 ? 0 : (g > 255 ? 255 : g);
-        out[o++] = b < 0 ? 0 : (b > 255 ? 255 : b);
+        final up = uBytes[uvIndex] - 128;
+        final vp = vBytes[uvIndex] - 128;
+        final rOffset = (1436 * vp) >> 10;
+        final gOffset = ((352 * up) >> 10) + ((731 * vp) >> 10);
+        final bOffset = (1815 * up) >> 10;
+        final pairEnd = x + 2 <= w ? x + 2 : w;
+        for (; x < pairEnd; x++) {
+          final yp = yBytes[yRow + x];
+          final r = yp + rOffset;
+          final g = yp - gOffset;
+          final b = yp + bOffset;
+          out[o] = r < 0 ? 0 : (r > 255 ? 255 : r);
+          out[o + 1] = g < 0 ? 0 : (g > 255 ? 255 : g);
+          out[o + 2] = b < 0 ? 0 : (b > 255 ? 255 : b);
+          o += 3;
+        }
       }
     }
     return img.Image.fromBytes(
