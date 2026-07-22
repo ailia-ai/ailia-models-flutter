@@ -50,7 +50,7 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('detic', 'Detic', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/desk.jpg'),
   ModelInfo('bytetrack', 'ByteTrack', 'Object Tracking', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo(
       'whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
   ModelInfo(
