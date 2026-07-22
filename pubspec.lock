@@ -6,7 +6,7 @@ packages:
     description:
       path: "."
       ref: main
-      resolved-ref: c5690f2756b9593994c1238cc3deeaa7b3974083
+      resolved-ref: "7db99b05ce9b45013f9fd0240a974d1d03b5f579"
       url: "https://github.com/ailia-ai/ailia-sdk-flutter.git"
     source: git
     version: "1.6.1"
