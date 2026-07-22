@@ -60,6 +60,29 @@ class BackendState {
         orElse: () => envList.first,
       );
 
+  /// Applies the default backend when a demo opens: the QNN (HTP)
+  /// environment for QNN-ready models when present, otherwise the CPU
+  /// backend (BLAS preferred). The user can still change the backend
+  /// from the top bar afterwards.
+  void applyModelDefault({required bool preferQnn}) {
+    final list = envList;
+    if (list.isEmpty) {
+      return;
+    }
+    AiliaEnvironment? pick;
+    if (preferQnn) {
+      for (final env in list) {
+        if (env.name.toUpperCase().contains('QNN')) {
+          pick = env;
+          break;
+        }
+      }
+    }
+    pick ??= list.firstWhere(_isBlas,
+        orElse: () => list.firstWhere(_isCpu, orElse: () => list.first));
+    selectedEnvId.value = pick.id;
+  }
+
   List<String> get llmBackendList {
     if (_llmBackendList.isEmpty) {
       _llmBackendList = AiliaLLMModel.getBackendList();
