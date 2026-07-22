@@ -6,7 +6,7 @@ packages:
     description:
       path: "."
       ref: qnn
-      resolved-ref: "32e23e240cccad1d8bde03645b5af023851fecf4"
+      resolved-ref: c46ee8933ec76e01b1358f93f9b870a011a885d5
       url: "https://github.com/ailia-ai/ailia-sdk-flutter.git"
     source: git
     version: "1.6.1"
@@ -264,7 +264,7 @@ packages:
     source: hosted
     version: "1.3.3"
   ffi:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: ffi
       sha256: "16ed7b077ef01ad6170a3d0c57caa4a112a38d7a2ed5602e0aca9ca6f3d98da6"
