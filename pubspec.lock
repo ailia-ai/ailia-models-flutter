@@ -5,8 +5,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: main
-      resolved-ref: "22d7ea9ee6f763194ad28ec64f8868cde72270ed"
+      ref: improve_buffer_copy
+      resolved-ref: "7a0e2d97543a4108930aabacc918efc2003a9b35"
       url: "https://github.com/ailia-ai/ailia-sdk-flutter.git"
     source: git
     version: "1.6.1"
