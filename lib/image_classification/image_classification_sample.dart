@@ -18,8 +18,44 @@ abstract class ImageClassifier {
 
   void close();
 
-  /// Classifies [image] and returns the result line to display.
+  /// Classifies [image] and returns the result lines to display.
   Future<String> run(img.Image image);
+}
+
+const int _numClass = 1000;
+const int _topN = 3;
+
+/// Softmax over [logits] (max-subtracted for numerical stability).
+Float32List _softmax(Float32List logits) {
+  double maxLogit = logits[0];
+  for (int i = 1; i < _numClass; i++) {
+    if (logits[i] > maxLogit) {
+      maxLogit = logits[i];
+    }
+  }
+  final probabilities = Float32List(_numClass);
+  double expSum = 0.0;
+  for (int i = 0; i < _numClass; i++) {
+    probabilities[i] = math.exp(logits[i] - maxLogit).toDouble();
+    expSum += probabilities[i];
+  }
+  for (int i = 0; i < _numClass; i++) {
+    probabilities[i] /= expSum;
+  }
+  return probabilities;
+}
+
+/// Result lines for the most probable ImageNet classes.
+String _formatTopClasses(Float32List probabilities) {
+  final indices = List<int>.generate(_numClass, (i) => i)
+    ..sort((a, b) => probabilities[b].compareTo(probabilities[a]));
+  final lines = <String>[];
+  for (int rank = 0; rank < _topN; rank++) {
+    final i = indices[rank];
+    lines.add("Top${rank + 1} : ${imagenet_category[i]}"
+        " Confidence : ${probabilities[i].toStringAsFixed(3)}");
+  }
+  return lines.join("\n");
 }
 
 /// ResNet50 (torchvision export) with ImageNet mean / std input
@@ -28,7 +64,6 @@ class ImageClassificationResNet50 implements ImageClassifier {
   final AiliaModel _model = AiliaModel();
   bool _available = false;
 
-  static const int _numClass = 1000;
   static const int _imageSize = 224;
 
   @override
@@ -68,16 +103,7 @@ class ImageClassificationResNet50 implements ImageClassifier {
 
     List<AiliaTensor> output = _model.run([inputTensor]);
 
-    double maxProb = 0.0;
-    int maxI = 0;
-    for (int i = 0; i < _numClass; i++) {
-      if (maxProb < output[0].data[i]) {
-        maxProb = output[0].data[i];
-        maxI = i;
-      }
-    }
-
-    return "Class : $maxI ${imagenet_category[maxI]} Confidence : ${maxProb.toStringAsFixed(3)}";
+    return _formatTopClasses(_softmax(output[0].data));
   }
 }
 
@@ -88,7 +114,6 @@ class ImageClassificationViT implements ImageClassifier {
   final AiliaModel _model = AiliaModel();
   bool _available = false;
 
-  static const int _numClass = 1000;
   static const int _imageSize = 224;
 
   @override
@@ -143,30 +168,6 @@ class ImageClassificationViT implements ImageClassifier {
 
     List<AiliaTensor> output = _model.run([inputTensor]);
 
-    // Softmax over the logits, as in the Kotlin sample.
-    final logits = output[0].data;
-    double maxLogit = logits[0];
-    for (int i = 1; i < _numClass; i++) {
-      if (logits[i] > maxLogit) {
-        maxLogit = logits[i];
-      }
-    }
-    double expSum = 0.0;
-    final exp = Float32List(_numClass);
-    for (int i = 0; i < _numClass; i++) {
-      exp[i] = math.exp(logits[i] - maxLogit).toDouble();
-      expSum += exp[i];
-    }
-    double maxProb = 0.0;
-    int maxI = 0;
-    for (int i = 0; i < _numClass; i++) {
-      final prob = exp[i] / expSum;
-      if (prob > maxProb) {
-        maxProb = prob;
-        maxI = i;
-      }
-    }
-
-    return "Class : $maxI ${imagenet_category[maxI]} Confidence : ${maxProb.toStringAsFixed(3)}";
+    return _formatTopClasses(_softmax(output[0].data));
   }
 }
