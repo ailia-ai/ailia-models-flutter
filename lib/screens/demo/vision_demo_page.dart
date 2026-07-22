@@ -16,6 +16,7 @@ import '../../model_catalog.dart';
 import '../../object_detection/detic.dart';
 import '../../object_detection/yolox.dart';
 import '../../object_tracking/bytetrack.dart';
+import '../../pose_estimation/lw_human_pose.dart';
 import '../../utils/image_util.dart';
 import 'camera_input.dart';
 import 'demo_session.dart';
@@ -47,6 +48,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   List<AiliaDetectorObject> _rtBoxes = [];
   List<String> _rtCategories = const [];
   List<TrackedBox> _rtTracked = [];
+  List<SkeletonLine> _rtSkeletonLines = [];
+  List<Offset> _rtSkeletonPoints = [];
   ui.Image? _rtOverlayImage;
   // The exact camera frame the current results were computed on. Shown
   // instead of the live preview so results never lag behind the video.
@@ -92,9 +95,15 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   // Camera, or changing the backend in the top bar.
   ObjectDetectionYoloX? _yoloxStill;
   U2Net? _u2netStill;
-  ImageClassificationResNet18? _resnet18Still;
+  ImageClassifier? _classifierStill;
   ObjectTrackingByteTrack? _bytetrackStill;
   Detic? _deticStill;
+  PoseEstimationLwHumanPose? _poseStill;
+
+  /// The classifier for the current model (ResNet50 or ViT).
+  ImageClassifier _createClassifier() => widget.model.id == 'vit'
+      ? ImageClassificationViT()
+      : ImageClassificationResNet50();
 
   @override
   void initState() {
@@ -131,12 +140,14 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     _yoloxStill = null;
     _u2netStill?.close();
     _u2netStill = null;
-    _resnet18Still?.close();
-    _resnet18Still = null;
+    _classifierStill?.close();
+    _classifierStill = null;
     _bytetrackStill?.close();
     _bytetrackStill = null;
     _deticStill?.close();
     _deticStill = null;
+    _poseStill?.close();
+    _poseStill = null;
   }
 
   /// Shows the bundled sample image before the first run.
@@ -165,6 +176,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   void _clearRealtimeResults() {
     _rtBoxes = [];
     _rtTracked = [];
+    _rtSkeletonLines = [];
+    _rtSkeletonPoints = [];
     _rtOverlayImage = null;
     _rtFrameImage = null;
     _rtLabel = '';
@@ -225,8 +238,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
           case "u2net":
             await _runU2NetStill();
             break;
-          case "resnet18":
-            await _runResNet18Still();
+          case "resnet50":
+          case "vit":
+            await _runClassifierStill();
             break;
           case "yolox":
             await _runYoloXStill();
@@ -236,6 +250,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
             break;
           case "bytetrack":
             await _runByteTrackStill();
+            break;
+          case "lw-human-pose":
+            await _runLwPoseStill();
             break;
         }
       });
@@ -518,20 +535,20 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     }
   }
 
-  Future<void> _runResNet18Still() async {
+  Future<void> _runClassifierStill() async {
     await _loadSampleImage();
 
-    if (_resnet18Still == null) {
-      final files =
-          await _session.downloadModelFiles(imageModelFiles['resnet18']!);
+    if (_classifierStill == null) {
+      final files = await _session
+          .downloadModelFiles(imageModelFiles[widget.model.id]!);
       if (files == null) {
         return;
       }
-      final classifier = ImageClassificationResNet18();
+      final classifier = _createClassifier();
       classifier.open(files[0], selectedEnvId);
-      _resnet18Still = classifier;
+      _classifierStill = classifier;
     }
-    final classifier = _resnet18Still!;
+    final classifier = _classifierStill!;
     try {
       int startTime = DateTime.now().millisecondsSinceEpoch;
       String classificationText =
@@ -542,8 +559,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
 
       _session.showResult("$classificationText\n$profileText");
     } catch (e) {
-      _resnet18Still?.close();
-      _resnet18Still = null;
+      _classifierStill?.close();
+      _classifierStill = null;
       rethrow;
     }
   }
@@ -595,6 +612,124 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       _yoloxStill = null;
       rethrow;
     }
+  }
+
+  // Minimum keypoint score to draw, as in the Kotlin sample.
+  static const double _poseScoreThreshold = 0.3;
+
+  /// A distinct color per keypoint index (hue mapped over the range).
+  static Color _poseLineColor(int keypointIndex) => HSVColor.fromAHSV(
+          1,
+          keypointIndex * 360 / PoseEstimationLwHumanPose.keypointCount,
+          1,
+          1)
+      .toColor();
+
+  /// Converts pose results into normalized skeleton drawing data,
+  /// skipping segments whose endpoints fall below the score threshold.
+  (List<SkeletonLine>, List<Offset>) _toSkeletonDrawing(
+      List<PoseObject> poses) {
+    final lines = <SkeletonLine>[];
+    final points = <Offset>[];
+    for (final pose in poses) {
+      for (final (a, b) in poseLinePairs) {
+        final ka = pose.keypoints[a];
+        final kb = pose.keypoints[b];
+        if (ka.score < _poseScoreThreshold ||
+            kb.score < _poseScoreThreshold) {
+          continue;
+        }
+        lines.add(SkeletonLine(
+            Offset(ka.x, ka.y), Offset(kb.x, kb.y), _poseLineColor(a)));
+      }
+      for (final keypoint in pose.keypoints) {
+        if (keypoint.score >= _poseScoreThreshold) {
+          points.add(Offset(keypoint.x, keypoint.y));
+        }
+      }
+    }
+    return (lines, points);
+  }
+
+  /// Repacks tightly packed RGB bytes as RGBA for the pose estimator,
+  /// which takes 32bpp input.
+  Uint8List _rgbToRgba(Uint8List rgb) {
+    final out = Uint8List((rgb.length ~/ 3) * 4);
+    int o = 0;
+    for (int i = 0; i < rgb.length; i += 3) {
+      out[o] = rgb[i];
+      out[o + 1] = rgb[i + 1];
+      out[o + 2] = rgb[i + 2];
+      out[o + 3] = 255;
+      o += 4;
+    }
+    return out;
+  }
+
+  Future<void> _runLwPoseStill() async {
+    await _loadSampleImage();
+
+    if (_poseStill == null) {
+      final files = await _session
+          .downloadModelFiles(imageModelFiles['lw-human-pose']!);
+      if (files == null) {
+        return;
+      }
+      final pose = PoseEstimationLwHumanPose();
+      pose.open(files[0], selectedEnvId);
+      _poseStill = pose;
+    }
+    final pose = _poseStill!;
+    try {
+      final inputImage = await uiImageToImage(_image!);
+      final rgba = inputImage.getBytes(order: img.ChannelOrder.rgba);
+
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      final poses = pose.run(rgba, inputImage.width, inputImage.height);
+      int endTime = DateTime.now().millisecondsSinceEpoch;
+
+      final (lines, points) = _toSkeletonDrawing(poses);
+      safeSetState(() {
+        _rtSkeletonLines = lines;
+        _rtSkeletonPoints = points;
+      });
+      _session.showResult(
+          "${poses.length} people\nprocessing time : ${endTime - startTime} ms");
+    } catch (e) {
+      _poseStill?.close();
+      _poseStill = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _realtimeLwPose() async {
+    final pose = PoseEstimationLwHumanPose();
+    await _runRealtimeModel(
+      models: imageModelFiles['lw-human-pose']!,
+      openModel: (files) => pose.open(files[0], selectedEnvId),
+      closeModel: pose.close,
+      onFrame: (frame) async {
+        int startTime = DateTime.now().millisecondsSinceEpoch;
+        final poses =
+            pose.run(_rgbToRgba(frame.rgb), frame.width, frame.height);
+        int endTime = DateTime.now().millisecondsSinceEpoch;
+        if (!mounted) {
+          return;
+        }
+        final frameImage = await frame.toUiImage();
+        if (!mounted) {
+          return;
+        }
+        final (lines, points) = _toSkeletonDrawing(poses);
+        safeSetState(() {
+          _rtSkeletonLines = lines;
+          _rtSkeletonPoints = points;
+          _rtFrameImage = frameImage;
+        });
+        _session.showResult(
+            "${poses.length} people / ${endTime - startTime} ms per frame");
+      },
+    );
   }
 
   /// A distinct color per tracking ID (golden-angle hue steps keep
@@ -745,8 +880,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         case "yolox":
           await _realtimeYoloX();
           break;
-        case "resnet18":
-          await _realtimeResNet18();
+        case "resnet50":
+        case "vit":
+          await _realtimeClassifier();
           break;
         case "u2net":
           await _realtimeU2Net();
@@ -759,6 +895,9 @@ class _VisionDemoPageState extends State<VisionDemoPage>
           break;
         case "bytetrack":
           await _realtimeByteTrack();
+          break;
+        case "lw-human-pose":
+          await _realtimeLwPose();
           break;
       }
     } catch (e) {
@@ -864,10 +1003,10 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     );
   }
 
-  Future<void> _realtimeResNet18() async {
-    final classifier = ImageClassificationResNet18();
+  Future<void> _realtimeClassifier() async {
+    final classifier = _createClassifier();
     await _runRealtimeModel(
-      models: imageModelFiles['resnet18']!,
+      models: imageModelFiles[widget.model.id]!,
       openModel: (files) => classifier.open(files[0], selectedEnvId),
       closeModel: classifier.close,
       onFrame: (frame) async {
@@ -1046,6 +1185,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       image: image,
       overlay: (_rtBoxes.isNotEmpty ||
               _rtTracked.isNotEmpty ||
+              _rtSkeletonLines.isNotEmpty ||
               _rtOverlayImage != null ||
               samInteractive)
           ? CustomPaint(
@@ -1053,6 +1193,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
                 boxes: _rtBoxes,
                 categories: _rtCategories,
                 trackedBoxes: _rtTracked,
+                skeletonLines: _rtSkeletonLines,
+                skeletonPoints: _rtSkeletonPoints,
                 overlayImage: _rtOverlayImage,
                 marker: samInteractive ? _sam2Point : null,
               ),
@@ -1099,6 +1241,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
                 boxes: _rtBoxes,
                 categories: _rtCategories,
                 trackedBoxes: _rtTracked,
+                skeletonLines: _rtSkeletonLines,
+                skeletonPoints: _rtSkeletonPoints,
                 frameImage: _rtFrameImage,
                 overlayImage: _rtOverlayImage,
                 label: _rtLabel,

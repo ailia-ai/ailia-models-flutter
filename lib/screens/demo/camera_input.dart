@@ -940,6 +940,16 @@ String _cameraDisplayName(List<CameraDescription> cameras, int index) {
   return name;
 }
 
+/// One skeleton line segment to draw, in normalized (0..1)
+/// coordinates.
+class SkeletonLine {
+  const SkeletonLine(this.a, this.b, this.color);
+
+  final Offset a;
+  final Offset b;
+  final Color color;
+}
+
 /// One object-tracking result to draw: a bounding box colored by its
 /// tracking ID and the recent trajectory of the box center. All
 /// coordinates are normalized to 0..1.
@@ -964,6 +974,8 @@ class CameraOverlayPainter extends CustomPainter {
     required this.boxes,
     required this.categories,
     this.trackedBoxes = const [],
+    this.skeletonLines = const [],
+    this.skeletonPoints = const [],
     this.frameImage,
     this.overlayImage,
     this.label = '',
@@ -973,6 +985,11 @@ class CameraOverlayPainter extends CustomPainter {
   final List<AiliaDetectorObject> boxes;
   final List<String> categories;
   final List<TrackedBox> trackedBoxes;
+
+  /// Skeleton segments and joints (pose estimation results),
+  /// normalized to 0..1.
+  final List<SkeletonLine> skeletonLines;
+  final List<Offset> skeletonPoints;
 
   /// The processed camera frame, drawn opaquely under the results so the
   /// displayed image matches what the model actually saw.
@@ -1068,6 +1085,24 @@ class CameraOverlayPainter extends CustomPainter {
       _drawLabel(canvas, tracked.label, rect.left, rect.top, tracked.color);
     }
 
+    for (final line in skeletonLines) {
+      canvas.drawLine(
+        Offset(line.a.dx * size.width, line.a.dy * size.height),
+        Offset(line.b.dx * size.width, line.b.dy * size.height),
+        Paint()
+          ..strokeWidth = 3
+          ..strokeCap = StrokeCap.round
+          ..color = line.color,
+      );
+    }
+    for (final point in skeletonPoints) {
+      canvas.drawCircle(
+        Offset(point.dx * size.width, point.dy * size.height),
+        4,
+        Paint()..color = Colors.white,
+      );
+    }
+
     if (label.isNotEmpty) {
       _drawLabel(canvas, label, 4, 4, Colors.black54);
     }
@@ -1105,6 +1140,8 @@ class CameraOverlayPainter extends CustomPainter {
   bool shouldRepaint(CameraOverlayPainter oldDelegate) {
     return oldDelegate.boxes != boxes ||
         oldDelegate.trackedBoxes != trackedBoxes ||
+        oldDelegate.skeletonLines != skeletonLines ||
+        oldDelegate.skeletonPoints != skeletonPoints ||
         oldDelegate.frameImage != frameImage ||
         oldDelegate.overlayImage != overlayImage ||
         oldDelegate.label != label ||

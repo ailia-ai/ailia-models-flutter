@@ -30,7 +30,9 @@ class ModelInfo {
 
 const List<ModelInfo> modelCatalog = [
   ModelInfo(
-      'resnet18', 'ResNet18', 'Image Classification', ModelInputKind.image,
+      'resnet50', 'ResNet50', 'Image Classification', ModelInputKind.image,
+      sampleAsset: 'assets/clock.jpg'),
+  ModelInfo('vit', 'ViT-B/16', 'Image Classification', ModelInputKind.image,
       sampleAsset: 'assets/clock.jpg'),
   ModelInfo(
       'sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image,
@@ -40,12 +42,15 @@ const List<ModelInfo> modelCatalog = [
       sampleAsset: 'assets/truck.jpg', defaultInputText: 'truck'),
   ModelInfo('u2net', 'U-2-Net', 'Background Removal', ModelInputKind.image,
       sampleAsset: 'assets/input_u2net.png'),
-  ModelInfo('yolox', 'YOLOX', 'Object Detection', ModelInputKind.image,
+  ModelInfo('yolox', 'YOLOX-S', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/clock.jpg'),
   ModelInfo('detic', 'Detic', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/desk.jpg'),
   ModelInfo('bytetrack', 'ByteTrack', 'Object Tracking', ModelInputKind.image,
       sampleAsset: 'assets/clock.jpg'),
+  ModelInfo('lw-human-pose', 'Lightweight Human Pose', 'Pose Estimation',
+      ModelInputKind.image,
+      sampleAsset: 'assets/person.jpg'),
   ModelInfo(
       'whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
   ModelInfo(
@@ -93,7 +98,14 @@ const Map<String, List<(String, String)>> imageModelFiles = {
   'yolox': [('yolox', 'yolox_s.opt.onnx')],
   'bytetrack': [('yolox', 'yolox_s.opt.onnx')],
   'detic': [('detic', 'Detic_C2_SwinB_896_4x_IN-21K+COCO_lvis_op16.onnx')],
-  'resnet18': [('resnet18', 'resnet18.onnx')],
+  'lw-human-pose': [
+    (
+      'lightweight-human-pose-estimation',
+      'lightweight-human-pose-estimation.opt.onnx'
+    )
+  ],
+  'resnet50': [('resnet50', 'resnet50_pytorch.onnx')],
+  'vit': [('vit', 'ViT-B_16-224.onnx')],
   'u2net': [('u2net', 'u2net_opset11.onnx')],
   'sam2': [
     ('segment-anything-2', 'image_encoder_hiera_t.onnx'),
@@ -118,6 +130,8 @@ IconData categoryIcon(String category) {
       return Icons.center_focus_strong;
     case 'Object Tracking':
       return Icons.route;
+    case 'Pose Estimation':
+      return Icons.accessibility_new;
     case 'Audio Processing':
       return Icons.graphic_eq;
     case 'Speech To Text':
@@ -141,6 +155,7 @@ Color categoryColor(BuildContext context, String category) {
     case 'Background Removal':
     case 'Object Detection':
     case 'Object Tracking':
+    case 'Pose Estimation':
       return scheme.primary;
     case 'Audio Processing':
     case 'Speech To Text':
