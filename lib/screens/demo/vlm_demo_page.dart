@@ -150,7 +150,7 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
 
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
+          "processing time : ${endTime - startTime} ms";
 
       _session.showResult("$outputText\n$profileText");
 

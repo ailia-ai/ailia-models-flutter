@@ -89,7 +89,7 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
     }
     int endTime = DateTime.now().millisecondsSinceEpoch;
     String profileText =
-        "processing time : ${(endTime - startTime) / 1000} sec";
+        "processing time : ${endTime - startTime} ms";
 
     safeSetState(() {
       _lastTtsPath = outputPath;
