@@ -106,9 +106,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux desktop build dependencies
+        # GStreamer is required by audioplayers_linux.
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
