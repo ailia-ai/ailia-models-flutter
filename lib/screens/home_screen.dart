@@ -178,6 +178,31 @@ class ModelCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
+                  if (model.qnnSupported) ...[
+                    Tooltip(
+                      message: 'Runs on the QNN (NPU) backend',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: Theme.of(context).colorScheme.tertiary),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'QNN',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.tertiary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   if (downloaded)
                     Tooltip(
                       message: 'Model downloaded',

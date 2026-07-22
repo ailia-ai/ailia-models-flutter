@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../backend_state.dart';
 import '../model_catalog.dart';
 import 'demo/chat_demo_page.dart';
 import 'demo/nlp_demo_page.dart';
@@ -12,13 +13,28 @@ import 'demo/vlm_demo_page.dart';
 /// category. Each page owns its input UI, inference glue and result
 /// presentation, built on the shared pieces in demo/ (DemoSession,
 /// CameraInput, the waveform and the common page scaffold).
-class DemoScreen extends StatelessWidget {
+class DemoScreen extends StatefulWidget {
   const DemoScreen({super.key, required this.model});
 
   final ModelInfo model;
 
   @override
+  State<DemoScreen> createState() => _DemoScreenState();
+}
+
+class _DemoScreenState extends State<DemoScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Each demo starts on its default backend: QNN (HTP) for the
+    // QNN-ready models, the CPU backend for everything else.
+    BackendState.instance
+        .applyModelDefault(preferQnn: widget.model.qnnSupported);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final model = widget.model;
     if (model.isChat) {
       return ChatDemoPage(model: model);
     }
