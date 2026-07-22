@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 
+import '../../backend_state.dart';
 import '../../background_removal/u2net/u2net.dart';
 import '../../image_classification/image_classification_sample.dart';
 import '../../image_segmentation/segment-anything-2/segment_image.dart';
@@ -84,16 +85,30 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   bool get _isDetic => widget.model.id == 'detic';
   int _deticWidth = 640;
 
+  // Still-image model instances, kept open across Runs so a repeated
+  // Run does not reload the model (on NPU backends the first inference
+  // also compiles the graph, so reopening every Run is expensive).
+  // Released when leaving the page, switching between Image and Web
+  // Camera, or changing the backend in the top bar.
+  ObjectDetectionYoloX? _yoloxStill;
+  U2Net? _u2netStill;
+  ImageClassificationResNet18? _resnet18Still;
+  ObjectTrackingByteTrack? _bytetrackStill;
+  Detic? _deticStill;
+
   @override
   void initState() {
     super.initState();
     _sam3Text.text = widget.model.defaultInputText ?? '';
+    BackendState.instance.selectedEnvId.addListener(_onEnvChanged);
     _loadSampleImage();
   }
 
   @override
   void dispose() {
     _realtimeActive = false;
+    BackendState.instance.selectedEnvId.removeListener(_onEnvChanged);
+    _releaseStillModels();
     _sam2Still?.close();
     _sam2Still = null;
     _resetSam3Session();
@@ -101,6 +116,27 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     _camera.dispose();
     _session.dispose();
     super.dispose();
+  }
+
+  /// The cached instances were opened with the previous backend, so a
+  /// backend change invalidates them; the next Run reopens the model.
+  void _onEnvChanged() {
+    _releaseStillModels();
+    _resetSam2Session();
+    _resetSam3Session();
+  }
+
+  void _releaseStillModels() {
+    _yoloxStill?.close();
+    _yoloxStill = null;
+    _u2netStill?.close();
+    _u2netStill = null;
+    _resnet18Still?.close();
+    _resnet18Still = null;
+    _bytetrackStill?.close();
+    _bytetrackStill = null;
+    _deticStill?.close();
+    _deticStill = null;
   }
 
   /// Shows the bundled sample image before the first run.
@@ -153,6 +189,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     if (useCamera) {
       _resetSam2Session();
       _resetSam3Session();
+      _releaseStillModels();
       safeSetState(() {
         _useCamera = true;
         _image = null;
@@ -163,6 +200,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       _realtimeActive = false;
       _resetSam2Session();
       _resetSam3Session();
+      _releaseStillModels();
       await _camera.close();
       safeSetState(() {
         _useCamera = false;
@@ -203,9 +241,12 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       });
 
   Future<void> _runSam2Still() async {
-    _sam2Still?.close();
-    _sam2Still = null;
-    _sam2StillInput = null;
+    // The sample image never changes, so a repeated Run reuses the
+    // open model and the cached image features.
+    if (_sam2Still != null) {
+      await _runSam2AtPoint(_sam2Point);
+      return;
+    }
 
     await _loadSampleImage();
 
@@ -277,7 +318,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       safeSetState(() {
         _image = maskUiImage;
       });
-      _session.showResult("mask decoder : ${(endTime - startTime) / 1000} sec");
+      _session.showResult("mask decoder : ${endTime - startTime} ms");
     } finally {
       _sam2Busy = false;
     }
@@ -327,7 +368,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         .map((e) => "$text ${(e.prob * 100).toStringAsFixed(0)}%")
         .join("\n");
     String profileText =
-        "${encodeProfile}grounding : ${(endTime - startTime) / 1000} sec";
+        "${encodeProfile}grounding : ${endTime - startTime} ms";
     _session.showResult(
         "${result.boxes.length} instances\n$resultSubText\n$profileText");
   }
@@ -415,7 +456,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         await _runSam3Grounding(sam3, text,
             frameImage: frameImage,
             encodeProfile:
-                "image encoder : ${(endTime - startTime) / 1000} sec\n");
+                "image encoder : ${endTime - startTime} ms\n");
       });
 
   /// Grabs a single camera frame via the frame stream (still captures
@@ -440,56 +481,70 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   Future<void> _runU2NetStill() async {
     await _loadSampleImage();
 
-    final files = await _session.downloadModelFiles(imageModelFiles['u2net']!);
-    if (files == null) {
-      return;
+    if (_u2netStill == null) {
+      final files =
+          await _session.downloadModelFiles(imageModelFiles['u2net']!);
+      if (files == null) {
+        return;
+      }
+      final u2net = U2Net();
+      u2net.open(files[0].path, envId: selectedEnvId);
+      _u2netStill = u2net;
     }
+    final u2net = _u2netStill!;
 
-    U2Net u2net = U2Net();
-    u2net.open(files[0].path, envId: selectedEnvId);
+    try {
+      final inputImage = await uiImageToImage(_image!);
+      int startTime = DateTime.now().millisecondsSinceEpoch;
+      await u2net.setImage(inputImage);
+      final maskImage = u2net.run();
+      int endTime = DateTime.now().millisecondsSinceEpoch;
 
-    final inputImage = await uiImageToImage(_image!);
-    await u2net.setImage(inputImage);
+      if (maskImage == null) {
+        return;
+      }
 
-    final maskImage = u2net.run();
-
-    if (maskImage == null) {
-      u2net.close();
-      return;
+      final maskUiImage = await imageToUiImage(maskImage);
+      safeSetState(() {
+        _image = maskUiImage;
+      });
+      _session.showResult(
+          "processing time : ${endTime - startTime} ms");
+    } catch (e) {
+      // A failed run may leave the model in a bad state; reopen next Run.
+      _u2netStill?.close();
+      _u2netStill = null;
+      rethrow;
     }
-
-    final maskUiImage = await imageToUiImage(maskImage);
-    safeSetState(() {
-      _image = maskUiImage;
-    });
-    _session.showResult('Generated masks.');
-
-    u2net.close();
   }
 
   Future<void> _runResNet18Still() async {
     await _loadSampleImage();
 
-    final files =
-        await _session.downloadModelFiles(imageModelFiles['resnet18']!);
-    if (files == null) {
-      return;
+    if (_resnet18Still == null) {
+      final files =
+          await _session.downloadModelFiles(imageModelFiles['resnet18']!);
+      if (files == null) {
+        return;
+      }
+      final classifier = ImageClassificationResNet18();
+      classifier.open(files[0], selectedEnvId);
+      _resnet18Still = classifier;
     }
-    final classifier = ImageClassificationResNet18();
-    classifier.open(files[0], selectedEnvId);
+    final classifier = _resnet18Still!;
     try {
       int startTime = DateTime.now().millisecondsSinceEpoch;
       String classificationText =
           await classifier.run(await uiImageToImage(_image!));
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
+          "processing time : ${endTime - startTime} ms";
 
       _session.showResult("$classificationText\n$profileText");
     } catch (e) {
-      _session.showError(e);
-    } finally {
-      classifier.close();
+      _resnet18Still?.close();
+      _resnet18Still = null;
+      rethrow;
     }
   }
 
@@ -501,12 +556,17 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       _image = loaded;
     });
 
-    final files = await _session.downloadModelFiles(imageModelFiles['yolox']!);
-    if (files == null) {
-      return;
+    if (_yoloxStill == null) {
+      final files =
+          await _session.downloadModelFiles(imageModelFiles['yolox']!);
+      if (files == null) {
+        return;
+      }
+      final yolox = ObjectDetectionYoloX();
+      yolox.open(files[0], selectedEnvId);
+      _yoloxStill = yolox;
     }
-    ObjectDetectionYoloX yolox = ObjectDetectionYoloX();
-    yolox.open(files[0], selectedEnvId);
+    final yolox = _yoloxStill!;
     try {
       final decoded = img.decodeImage(imData)!;
       final width = decoded.width;
@@ -518,7 +578,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       final res = yolox.run(buffer, width, height);
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
+          "processing time : ${endTime - startTime} ms";
 
       String resultSubText = res
           .map((e) =>
@@ -530,8 +590,10 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         _rtCategories = yolox.category;
       });
       _session.showResult("$resultSubText\n$profileText");
-    } finally {
-      yolox.close();
+    } catch (e) {
+      _yoloxStill?.close();
+      _yoloxStill = null;
+      rethrow;
     }
   }
 
@@ -564,13 +626,17 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       _image = loaded;
     });
 
-    final files =
-        await _session.downloadModelFiles(imageModelFiles['bytetrack']!);
-    if (files == null) {
-      return;
+    if (_bytetrackStill == null) {
+      final files =
+          await _session.downloadModelFiles(imageModelFiles['bytetrack']!);
+      if (files == null) {
+        return;
+      }
+      final tracker = ObjectTrackingByteTrack();
+      tracker.open(files[0], selectedEnvId);
+      _bytetrackStill = tracker;
     }
-    final tracker = ObjectTrackingByteTrack();
-    tracker.open(files[0], selectedEnvId);
+    final tracker = _bytetrackStill!;
     try {
       final decoded = img.decodeImage(imData)!;
       final imageWithoutAlpha = decoded.convert(numChannels: 3);
@@ -580,7 +646,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       final res = tracker.run(buffer, decoded.width, decoded.height);
       int endTime = DateTime.now().millisecondsSinceEpoch;
       String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
+          "processing time : ${endTime - startTime} ms";
 
       String resultSubText = res
           .map((r) =>
@@ -591,21 +657,30 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         _rtTracked = _toTrackedBoxes(res, tracker.category);
       });
       _session.showResult("$resultSubText\n$profileText");
-    } finally {
-      tracker.close();
+    } catch (e) {
+      _bytetrackStill?.close();
+      _bytetrackStill = null;
+      rethrow;
     }
   }
 
   Future<void> _runDeticStill() async {
     await _loadSampleImage();
 
-    final files = await _session.downloadModelFiles(imageModelFiles['detic']!);
-    if (files == null) {
-      return;
+    // Keeping the SwinB model resident is heavy on mobile memory, but
+    // reloading it on every Run is far slower; it is released when the
+    // source is switched or the page is left.
+    if (_deticStill == null) {
+      final files =
+          await _session.downloadModelFiles(imageModelFiles['detic']!);
+      if (files == null) {
+        return;
+      }
+      final detic = Detic();
+      detic.open(files[0].path, envId: selectedEnvId);
+      _deticStill = detic;
     }
-
-    final detic = Detic();
-    detic.open(files[0].path, envId: selectedEnvId);
+    final detic = _deticStill!;
     try {
       _session.setStatus("Running Detic ($_deticWidth px)...");
       // Let the status render before the inference blocks the UI isolate.
@@ -634,12 +709,13 @@ class _VisionDemoPageState extends State<VisionDemoPage>
               "${detic.category[e.category]} ${(e.prob * 100).toStringAsFixed(0)}%")
           .join("\n");
       String profileText =
-          "processing time : ${(endTime - startTime) / 1000} sec";
+          "processing time : ${endTime - startTime} ms";
       _session.showResult(
           "${result.boxes.length} instances\n$resultSubText\n$profileText");
-    } finally {
-      // The SwinB model is too large to keep resident on mobile.
-      detic.close();
+    } catch (e) {
+      _deticStill?.close();
+      _deticStill = null;
+      rethrow;
     }
   }
 
@@ -755,8 +831,11 @@ class _VisionDemoPageState extends State<VisionDemoPage>
           _rtCategories = yolox.category;
           _rtFrameImage = frameImage;
         });
+        // The camera resolution is shown to make a mid-stream
+        // resolution change (which would hurt some backends) visible.
         _session.showResult(
-            "${res.length} objects / ${endTime - startTime} ms per frame");
+            "${res.length} objects / ${endTime - startTime} ms per frame"
+            " / input ${frame.width}x${frame.height}");
       },
     );
   }
