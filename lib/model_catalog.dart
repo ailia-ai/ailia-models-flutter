@@ -55,7 +55,7 @@ const List<ModelInfo> modelCatalog = [
       sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo('lw-human-pose', 'Lightweight Human Pose', 'Pose Estimation',
       ModelInputKind.image,
-      sampleAsset: 'assets/person.jpg'),
+      sampleAsset: 'assets/person.jpg', qnnSupported: true),
   ModelInfo(
       'whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
   ModelInfo(
