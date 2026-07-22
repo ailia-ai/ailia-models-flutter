@@ -42,7 +42,7 @@ const List<ModelInfo> modelCatalog = [
       sampleAsset: 'assets/truck.jpg', defaultInputText: 'truck'),
   ModelInfo('u2net', 'U-2-Net', 'Background Removal', ModelInputKind.image,
       sampleAsset: 'assets/input_u2net.png'),
-  ModelInfo('yolox', 'YOLOX', 'Object Detection', ModelInputKind.image,
+  ModelInfo('yolox', 'YOLOX-S', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/clock.jpg'),
   ModelInfo('detic', 'Detic', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/desk.jpg'),
