@@ -7,6 +7,9 @@ import 'package:camera/camera.dart';
 // AudioFormat collides with the record package's; we only use the
 // photo API.
 import 'package:camera_macos/camera_macos.dart' hide AudioFormat;
+// The vendored fork adds getPreviewFrame for polling preview frames
+// (upstream camera_windows has no image streaming).
+import 'package:camera_windows/camera_windows.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -74,6 +77,12 @@ class CameraInput extends ChangeNotifier {
   /// Aspect ratio of the frames actually processed, tracked so the
   /// preview box can match the realtime result frames.
   double trackedAspect = 4 / 3;
+
+  /// Milliseconds the last [grabFrame] spent capturing the photo and
+  /// decoding it, for profiling the realtime loop on platforms without
+  /// an image stream (zero on the stream paths).
+  int lastCaptureMs = 0;
+  int lastDecodeMs = 0;
 
   /// Last still capture (multimodal demo); the preview freezes on it.
   Uint8List? capturedBytes;
@@ -327,8 +336,37 @@ class CameraInput extends ChangeNotifier {
       }
       return _pluginStreamToFrame(plugin, image);
     }
+    if (!kIsWeb && Platform.isWindows) {
+      // Poll the latest preview frame via the vendored camera_windows
+      // fork: no per-frame still capture (which took seconds per
+      // frame), no JPEG round trip.
+      try {
+        final grabStart = DateTime.now().millisecondsSinceEpoch;
+        final preview = await CameraWindows.getPreviewFrame(plugin.cameraId);
+        if (preview == null) {
+          // No frame cached yet; the realtime loop retries.
+          return null;
+        }
+        final convertStart = DateTime.now().millisecondsSinceEpoch;
+        final frame = _previewFrameToFrame(preview);
+        if (frame != null) {
+          lastCaptureMs = convertStart - grabStart;
+          lastDecodeMs =
+              DateTime.now().millisecondsSinceEpoch - convertStart;
+          updateAspectFrom(frame.width, frame.height);
+          return frame;
+        }
+      } on PlatformException {
+        // Running against a plugin without preview frame support;
+        // fall through to the still-capture path.
+      } on MissingPluginException {
+        // Same as above.
+      }
+    }
+    final captureStart = DateTime.now().millisecondsSinceEpoch;
     final shot = await plugin.takePicture();
     final bytes = await shot.readAsBytes();
+    final decodeStart = DateTime.now().millisecondsSinceEpoch;
     try {
       // Avoid piling up capture files while looping.
       await File(shot.path).delete();
@@ -337,6 +375,8 @@ class CameraInput extends ChangeNotifier {
     // always mirrors.
     final frame = await _decodePhotoToFrame(bytes,
         mirror: !kIsWeb && Platform.isWindows);
+    lastCaptureMs = decodeStart - captureStart;
+    lastDecodeMs = DateTime.now().millisecondsSinceEpoch - decodeStart;
     if (frame == null) {
       return null;
     }
@@ -345,6 +385,32 @@ class CameraInput extends ChangeNotifier {
     // displayed frames. Track the real frame aspect instead.
     updateAspectFrom(frame.width, frame.height);
     return frame;
+  }
+
+  /// Converts a polled Windows preview frame (BGRX byte order,
+  /// top-down, unmirrored) into a tightly packed RGB frame, mirrored
+  /// horizontally to match the preview (which camera_windows always
+  /// mirrors).
+  CameraFrame? _previewFrameToFrame(WindowsPreviewFrame preview) {
+    final w = preview.width;
+    final h = preview.height;
+    final bytes = preview.bytes;
+    if (w <= 0 || h <= 0 || bytes.length < w * h * 4) {
+      return null;
+    }
+    final out = Uint8List(w * h * 3);
+    int o = 0;
+    for (int y = 0; y < h; y++) {
+      final rowBase = y * w * 4;
+      for (int x = w - 1; x >= 0; x--) {
+        final i = rowBase + x * 4;
+        out[o] = bytes[i + 2];
+        out[o + 1] = bytes[i + 1];
+        out[o + 2] = bytes[i];
+        o += 3;
+      }
+    }
+    return CameraFrame(out, w, h);
   }
 
   /// Longest side of frames produced by the still-capture path. Photos

@@ -832,10 +832,16 @@ class _VisionDemoPageState extends State<VisionDemoPage>
           _rtFrameImage = frameImage;
         });
         // The camera resolution is shown to make a mid-stream
-        // resolution change (which would hurt some backends) visible.
+        // resolution change (which would hurt some backends) visible;
+        // the capture / decode times profile the still-capture frame
+        // path used on platforms without an image stream.
+        final grabProfile = _camera.lastCaptureMs > 0
+            ? " / capture ${_camera.lastCaptureMs} ms"
+                " / decode ${_camera.lastDecodeMs} ms"
+            : "";
         _session.showResult(
             "${res.length} objects / ${endTime - startTime} ms per frame"
-            " / input ${frame.width}x${frame.height}");
+            " / input ${frame.width}x${frame.height}$grabProfile");
       },
     );
   }
