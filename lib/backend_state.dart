@@ -1,4 +1,5 @@
-import 'package:ailia/ailia.dart' show AILIA_ENVIRONMENT_TYPE_BLAS;
+import 'package:ailia/ailia.dart'
+    show AILIA_ENVIRONMENT_TYPE_BLAS, AILIA_ENVIRONMENT_TYPE_CPU;
 import 'package:ailia/ailia_model.dart';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:flutter/material.dart';
@@ -24,14 +25,31 @@ class BackendState {
   static bool _isBlas(AiliaEnvironment e) =>
       e.type == AILIA_ENVIRONMENT_TYPE_BLAS;
 
+  static bool _isCpu(AiliaEnvironment e) =>
+      e.type == AILIA_ENVIRONMENT_TYPE_CPU;
+
+  /// QNN provides CPU / GPU / HTP variants, but only HTP (the NPU) is
+  /// meaningful for the demos; hide the QNN CPU and GPU variants from
+  /// the selector.
+  static bool _isSelectable(AiliaEnvironment e) {
+    final name = e.name.toUpperCase();
+    return !(name.contains('QNN') &&
+        (name.contains('CPU') || name.contains('GPU')));
+  }
+
   List<AiliaEnvironment> get envList {
     if (_envList.isEmpty) {
-      _envList = AiliaModel.getEnvironmentList();
+      _envList =
+          AiliaModel.getEnvironmentList().where(_isSelectable).toList();
       if (_envList.isNotEmpty) {
         // Default to the BLAS backend when available; it is much faster
-        // than the plain CPU environment.
-        selectedEnvId.value =
-            _envList.firstWhere(_isBlas, orElse: () => _envList.first).id;
+        // than the plain CPU environment. The QNN build has no BLAS, so
+        // fall back to the plain CPU environment rather than QNN-HTP.
+        selectedEnvId.value = _envList
+            .firstWhere(_isBlas,
+                orElse: () => _envList.firstWhere(_isCpu,
+                    orElse: () => _envList.first))
+            .id;
       }
     }
     return _envList;
