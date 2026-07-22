@@ -105,11 +105,15 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
       return;
     }
     _listener!.cancel();
-    _listener = null;
     _stopMicRecorder();
-    _recStart = null;
     _whisperStreaming.terminate();
     _terminating = true;
+    // Rebuild so the Stop button returns to Run; without this the page
+    // only repaints when new transcript text happens to arrive.
+    safeSetState(() {
+      _listener = null;
+      _recStart = null;
+    });
     _session.showResult("Please wait terminate.");
   }
 
