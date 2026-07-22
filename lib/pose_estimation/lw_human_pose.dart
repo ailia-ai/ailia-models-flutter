@@ -105,8 +105,31 @@ const List<(int, int)> poseLinePairs = [
   ),
 ];
 
+/// The Pose Estimator API lives in a separate shared library on
+/// desktop platforms (ailia_pose_estimate, which links against the
+/// main ailia library); Android bundles it into libailia.so and iOS
+/// links it into the process.
+DynamicLibrary _poseEstimateLibrary() {
+  if (Platform.isIOS) {
+    return DynamicLibrary.process();
+  }
+  if (Platform.isAndroid) {
+    return DynamicLibrary.open('libailia.so');
+  }
+  if (Platform.isMacOS) {
+    return DynamicLibrary.open('libailia_pose_estimate.dylib');
+  }
+  if (Platform.isWindows) {
+    return DynamicLibrary.open('ailia_pose_estimate.dll');
+  }
+  return DynamicLibrary.open('libailia_pose_estimate.so');
+}
+
 class PoseEstimationLwHumanPose {
   AiliaModel? _model;
+  // FFI bindings resolved against the pose estimate library (see
+  // _poseEstimateLibrary); the network itself comes from _model.
+  dynamic _poseFfi;
   Pointer<Pointer<ailia_dart.AILIAPoseEstimator>>? _ppEstimator;
   bool available = false;
 
@@ -119,9 +142,10 @@ class PoseEstimationLwHumanPose {
     final model = AiliaModel();
     model.openFile(onnxFile.path, envId: envId);
     _model = model;
+    _poseFfi = ailia_dart.ailiaFFI(_poseEstimateLibrary());
 
     _ppEstimator = malloc<Pointer<ailia_dart.AILIAPoseEstimator>>();
-    int status = model.ailia.ailiaCreatePoseEstimator(
+    int status = _poseFfi.ailiaCreatePoseEstimator(
       _ppEstimator!,
       model.ppAilia!.value,
       ailia_dart.AILIA_POSE_ESTIMATOR_ALGORITHM_LW_HUMAN_POSE,
@@ -142,7 +166,7 @@ class PoseEstimationLwHumanPose {
       return;
     }
 
-    _model!.ailia.ailiaDestroyPoseEstimator(_ppEstimator!.value);
+    _poseFfi.ailiaDestroyPoseEstimator(_ppEstimator!.value);
     malloc.free(_ppEstimator!);
     _ppEstimator = null;
     _model!.close();
@@ -160,7 +184,7 @@ class PoseEstimationLwHumanPose {
       throw Exception("invalid image format");
     }
 
-    final ailia = _model!.ailia;
+    final ailia = _poseFfi;
     final estimator = _ppEstimator!.value;
 
     final inputData = malloc<Uint8>(rgba.length);
