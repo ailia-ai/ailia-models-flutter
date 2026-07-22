@@ -30,7 +30,9 @@ class ModelInfo {
 
 const List<ModelInfo> modelCatalog = [
   ModelInfo(
-      'resnet18', 'ResNet18', 'Image Classification', ModelInputKind.image,
+      'resnet50', 'ResNet50', 'Image Classification', ModelInputKind.image,
+      sampleAsset: 'assets/clock.jpg'),
+  ModelInfo('vit', 'ViT-B/16', 'Image Classification', ModelInputKind.image,
       sampleAsset: 'assets/clock.jpg'),
   ModelInfo(
       'sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image,
@@ -102,7 +104,8 @@ const Map<String, List<(String, String)>> imageModelFiles = {
       'lightweight-human-pose-estimation.opt.onnx'
     )
   ],
-  'resnet18': [('resnet18', 'resnet18.onnx')],
+  'resnet50': [('resnet50', 'resnet50_pytorch.onnx')],
+  'vit': [('vit', 'ViT-B_16-224.onnx')],
   'u2net': [('u2net', 'u2net_opset11.onnx')],
   'sam2': [
     ('segment-anything-2', 'image_encoder_hiera_t.onnx'),

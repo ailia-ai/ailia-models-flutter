@@ -37,7 +37,8 @@ flutter run
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
-| [resnet18](/lib/image_classification/) | [ResNet18]( https://pytorch.org/vision/main/generated/torchvision.models.resnet18.html) | Pytorch | 1.2.8 and later | |
+| [resnet50](/lib/image_classification/) | [ResNet50]( https://pytorch.org/vision/main/generated/torchvision.models.resnet50.html) | Pytorch | 1.2.8 and later | |
+| [vit](/lib/image_classification/) | [Vision Transformer](https://github.com/google-research/vision_transformer) | Pytorch | 1.2.5 and later | [JP](https://tech.ailia.ai/vision-transformer-%E6%9C%80%E5%85%88%E7%AB%AF%E3%81%AE%E7%94%BB%E5%83%8F%E8%AD%98%E5%88%A5%E3%83%A2%E3%83%87%E3%83%AB-133c46b58f5b) |
 
 ### Image Segmentation
 
