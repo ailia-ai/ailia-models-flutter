@@ -1,4 +1,4 @@
-// ResNet18 image classification using the ailia SDK Predict API.
+// ResNet50 image classification using the ailia SDK Predict API.
 
 import 'dart:io';
 import 'package:ailia/ailia_model.dart';
@@ -6,9 +6,9 @@ import 'package:image/image.dart' as img;
 import '../utils/image_util.dart';
 import 'imagenet_category.dart';
 
-/// ResNet18 classifier that keeps the model open so it can be run
+/// ResNet50 classifier that keeps the model open so it can be run
 /// repeatedly (e.g. on live camera frames).
-class ImageClassificationResNet18 {
+class ImageClassificationResNet50 {
   final AiliaModel _model = AiliaModel();
   bool _available = false;
 

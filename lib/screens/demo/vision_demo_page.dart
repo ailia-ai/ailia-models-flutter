@@ -92,7 +92,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
   // Camera, or changing the backend in the top bar.
   ObjectDetectionYoloX? _yoloxStill;
   U2Net? _u2netStill;
-  ImageClassificationResNet18? _resnet18Still;
+  ImageClassificationResNet50? _resnet50Still;
   ObjectTrackingByteTrack? _bytetrackStill;
   Detic? _deticStill;
 
@@ -131,8 +131,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     _yoloxStill = null;
     _u2netStill?.close();
     _u2netStill = null;
-    _resnet18Still?.close();
-    _resnet18Still = null;
+    _resnet50Still?.close();
+    _resnet50Still = null;
     _bytetrackStill?.close();
     _bytetrackStill = null;
     _deticStill?.close();
@@ -225,8 +225,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
           case "u2net":
             await _runU2NetStill();
             break;
-          case "resnet18":
-            await _runResNet18Still();
+          case "resnet50":
+            await _runResNet50Still();
             break;
           case "yolox":
             await _runYoloXStill();
@@ -518,20 +518,20 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     }
   }
 
-  Future<void> _runResNet18Still() async {
+  Future<void> _runResNet50Still() async {
     await _loadSampleImage();
 
-    if (_resnet18Still == null) {
+    if (_resnet50Still == null) {
       final files =
-          await _session.downloadModelFiles(imageModelFiles['resnet18']!);
+          await _session.downloadModelFiles(imageModelFiles['resnet50']!);
       if (files == null) {
         return;
       }
-      final classifier = ImageClassificationResNet18();
+      final classifier = ImageClassificationResNet50();
       classifier.open(files[0], selectedEnvId);
-      _resnet18Still = classifier;
+      _resnet50Still = classifier;
     }
-    final classifier = _resnet18Still!;
+    final classifier = _resnet50Still!;
     try {
       int startTime = DateTime.now().millisecondsSinceEpoch;
       String classificationText =
@@ -542,8 +542,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
 
       _session.showResult("$classificationText\n$profileText");
     } catch (e) {
-      _resnet18Still?.close();
-      _resnet18Still = null;
+      _resnet50Still?.close();
+      _resnet50Still = null;
       rethrow;
     }
   }
@@ -745,8 +745,8 @@ class _VisionDemoPageState extends State<VisionDemoPage>
         case "yolox":
           await _realtimeYoloX();
           break;
-        case "resnet18":
-          await _realtimeResNet18();
+        case "resnet50":
+          await _realtimeResNet50();
           break;
         case "u2net":
           await _realtimeU2Net();
@@ -864,10 +864,10 @@ class _VisionDemoPageState extends State<VisionDemoPage>
     );
   }
 
-  Future<void> _realtimeResNet18() async {
-    final classifier = ImageClassificationResNet18();
+  Future<void> _realtimeResNet50() async {
+    final classifier = ImageClassificationResNet50();
     await _runRealtimeModel(
-      models: imageModelFiles['resnet18']!,
+      models: imageModelFiles['resnet50']!,
       openModel: (files) => classifier.open(files[0], selectedEnvId),
       closeModel: classifier.close,
       onFrame: (frame) async {

@@ -37,7 +37,7 @@ flutter run
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
-| [resnet18](/lib/image_classification/) | [ResNet18]( https://pytorch.org/vision/main/generated/torchvision.models.resnet18.html) | Pytorch | 1.2.8 and later | |
+| [resnet50](/lib/image_classification/) | [ResNet50]( https://pytorch.org/vision/main/generated/torchvision.models.resnet50.html) | Pytorch | 1.2.8 and later | |
 
 ### Image Segmentation
 
