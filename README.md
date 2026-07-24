@@ -88,6 +88,12 @@ flutter run
 |:-----------|------------:|:------------:|:------------:|:------------:|
 |[lw-human-pose](/lib/pose_estimation/) | [Lightweight OpenPose](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch) | Pytorch | 1.2.1 and later | [JP](https://tech.ailia.ai/lightweighthumanpose-%E9%AB%98%E9%80%9F%E3%81%AB%E9%AA%A8%E6%A0%BC%E6%A4%9C%E5%87%BA%E3%82%92%E8%A1%8C%E3%81%86%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92%E3%83%A2%E3%83%87%E3%83%AB-2f2b229ada4b) |
 
+### Diffusion
+
+| | Model | Exported From | Supported Ailia Version | Blog |
+|:-----------|------------:|:------------:|:------------:|:------------:|
+|[sdxl](/lib/diffusion/sdxl) | [Stable Diffusion XL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) | Pytorch | 1.6.0 and later | |
+
 ### Text To Speech
 
 | Name | Detail | Exported From | Supported Ailia Version | Blog |

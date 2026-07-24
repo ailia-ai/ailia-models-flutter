@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../model_catalog.dart';
 import 'demo/chat_demo_page.dart';
+import 'demo/diffusion_demo_page.dart';
 import 'demo/nlp_demo_page.dart';
 import 'demo/stt_demo_page.dart';
 import 'demo/tts_demo_page.dart';
@@ -21,6 +22,9 @@ class DemoScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     if (model.isChat) {
       return ChatDemoPage(model: model);
+    }
+    if (model.category == 'Diffusion') {
+      return DiffusionDemoPage(model: model);
     }
     if (model.input == ModelInputKind.imageText) {
       return VlmDemoPage(model: model);
