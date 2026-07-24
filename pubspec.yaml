@@ -117,6 +117,7 @@ flutter:
     - assets/clock.jpg
     - assets/desk.jpg
     - assets/person.jpg
+    - assets/astronaut.jpg
     - assets/input_u2net.png
     - assets/demo.wav
     - assets/reference_audio_girl.wav

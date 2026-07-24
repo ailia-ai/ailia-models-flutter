@@ -24,6 +24,7 @@ const Map<String, String> _markerFiles = {
   'gpt-sovits-ja': 'vits.onnx',
   'gpt-sovits-en': 'homographs.en',
   'gpt-sovits-zh': 'jieba.dict.utf8',
+  'sdxl': 'sdxl/sdxl_unet_fp16.onnx',
   'gemma2': 'gemma-2-2b-it-Q4_K_M.gguf',
   'gemma4-e2b': 'gemma-4-E2B-it-Q4_K_M.gguf',
   'gemma3-multimodal': 'gemma-3-4b-it-Q4_K_M.gguf',
