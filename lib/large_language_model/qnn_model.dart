@@ -19,11 +19,14 @@ int llmContextLength(String path, String backend) {
 /// Packages contain precompiled context binaries and tokenizer data.
 /// Never substitute a different SoC's package or a GGUF for QNN.
 List<String> qnnTextModelFiles(String type, String soc) {
-  if (type != 'gemma4-e2b') {
-    throw UnsupportedError('QNN is supported only for Gemma 4 E2B.');
+  if (type != 'gemma4-e2b' && type != 'gemma4-e4b') {
+    throw UnsupportedError('QNN supports Gemma 4 E2B / E4B.');
   }
   if (!windowsQnnSocs.contains(soc)) {
     throw UnsupportedError('No Windows QNN context binary for SoC "$soc".');
   }
-  return ['gemma/qnn/v1.5.0', 'gemma4-e2b-$soc.qnn'];
+  if (type == 'gemma4-e4b' && soc != 'sc8380xp') {
+    throw UnsupportedError('Gemma 4 E4B requires sc8380xp on Windows HTP.');
+  }
+  return ['gemma/qnn/v1.5.0', '$type-$soc.qnn'];
 }

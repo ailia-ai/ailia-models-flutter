@@ -8,6 +8,7 @@ import 'demo/stt_demo_page.dart';
 import 'demo/tts_demo_page.dart';
 import 'demo/vision_demo_page.dart';
 import 'demo/vlm_demo_page.dart';
+import 'demo/alm_demo_page.dart';
 
 /// Entry point for a model demo: picks the page for the model's
 /// category. Each page owns its input UI, inference glue and result
@@ -30,7 +31,8 @@ class _DemoScreenState extends State<DemoScreen> {
     // QNN-ready models, the CPU backend for everything else.
     BackendState.instance.applyModelDefault(
       preferQnn: widget.model.qnnSupported,
-      forLlm: widget.model.category == 'Large Language Model',
+      forLlm: widget.model.usesLlmBackend,
+      supportedQnnSocs: widget.model.supportedQnnSocs,
     );
   }
 
@@ -39,6 +41,9 @@ class _DemoScreenState extends State<DemoScreen> {
     final model = widget.model;
     if (model.isChat) {
       return ChatDemoPage(model: model);
+    }
+    if (model.category == 'ALM') {
+      return AlmDemoPage(model: model);
     }
     if (model.input == ModelInputKind.imageText) {
       return VlmDemoPage(model: model);

@@ -1,27 +1,25 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:http/http.dart' as http;
+import 'qnn_model.dart';
+import 'qnn_runtime.dart';
+import 'multimodal_model_files.dart';
+import 'media_prompt.dart';
 
 class MultimodalLargeLanguageModel {
   final AiliaLLMModel _ailiaLLMModel = AiliaLLMModel();
 
-  List<String> getModelList(){
-    List<String> modelList = List<String>.empty(growable: true);
-    
-    // Multimodal Gemma3 model
-    modelList.add("gemma");
-    modelList.add("gemma-3-4b-it-Q4_K_M.gguf");
-    modelList.add("gemma");
-    modelList.add("gemma-3-4b-it-GGUF_mmproj-model-f16.gguf");
-
-    return modelList;
+  List<String> getModelList(
+      [String type = 'gemma3-multimodal', String backend = '']) {
+    return multimodalModelFiles(type, backend,
+        soc: isLlmQnnBackend(backend) ? availableWindowsQnnSoc() : null);
   }
 
-  List<Map<String, dynamic>> messages = List<Map<String, dynamic>>.empty(growable:true);
+  List<Map<String, dynamic>> messages =
+      List<Map<String, dynamic>>.empty(growable: true);
   String systemPrompt = "";
 
-  void open(File model, File mmproj){
+  void open(File model, File mmproj) {
     int nCtx = 8192; // Context size for multimodal model
 
     // Initialize backend list before opening model
@@ -47,7 +45,7 @@ class MultimodalLargeLanguageModel {
     }
   }
 
-  void openWithBackend(File model, File mmproj, String selectedBackend){
+  void openWithBackend(File model, File mmproj, String selectedBackend) {
     int nCtx = 8192; // Context size for multimodal model
 
     // Initialize backend list before opening model
@@ -69,7 +67,8 @@ class MultimodalLargeLanguageModel {
 
     // Verify the selected backend is available
     if (!backendList.contains(backend)) {
-      throw Exception("Selected backend '$backend' not available. Available: $backendList");
+      throw Exception(
+          "Selected backend '$backend' not available. Available: $backendList");
     }
 
     // Open the base text model with selected backend
@@ -87,12 +86,18 @@ class MultimodalLargeLanguageModel {
 
   /// Opens the model with an exact backend name taken from
   /// AiliaLLMModel.getBackendList() (e.g. CPU / Vulkan / OpenCL / Metal).
-  void openWithBackendName(File model, File mmproj, String backend){
-    int nCtx = 8192; // Context size for multimodal model
+  void openWithBackendName(File model, File mmproj, String backend,
+      {String mediaType = 'image'}) {
+    if (mediaType != 'image' && mediaType != 'audio') {
+      throw ArgumentError('Unsupported media type: $mediaType');
+    }
+    final nCtx = llmContextLength(model.path, backend);
+    llmContextLength(mmproj.path, backend);
 
     List<String> backendList = AiliaLLMModel.getBackendList();
     if (!backendList.contains(backend)) {
-      throw Exception("Backend '$backend' not available. Available: $backendList");
+      throw Exception(
+          "Backend '$backend' not available. Available: $backendList");
     }
 
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
@@ -102,62 +107,65 @@ class MultimodalLargeLanguageModel {
 
     // Get multimodal capabilities to verify setup
     Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
-    if (!capabilities['vision']!) {
-      throw Exception("Vision capabilities not available");
+    if (capabilities[mediaType == 'audio' ? 'audio' : 'vision'] != true) {
+      throw Exception('$mediaType capabilities not available');
     }
   }
 
-  void setSystemPrompt(String prompt){
+  void setSystemPrompt(String prompt) {
     systemPrompt = prompt;
     _addSystemPrompt();
   }
 
-  void _addSystemPrompt(){
-    if (systemPrompt == ""){
+  void _addSystemPrompt() {
+    if (systemPrompt == "") {
       return;
     }
     messages.add({"role": "system", "content": systemPrompt});
   }
 
-  String chatWithImage(String inputText, String imagePath){
-    if (_ailiaLLMModel.contextFull()){
-      messages = List<Map<String, dynamic>>.empty(growable:true);
+  String chatWithImage(String inputText, String imagePath) {
+    _setMediaPrompt(inputText, imagePath, 'image');
+    String text = "";
+    while (true) {
+      String? deltaText = _ailiaLLMModel.generate();
+      if (deltaText == null) break;
+      text += deltaText;
+    }
+    messages.add({"role": "assistant", "content": text});
+    return text;
+  }
+
+  void _setMediaPrompt(String inputText, String path, String mediaType) {
+    if (_ailiaLLMModel.contextFull()) {
+      messages = List<Map<String, dynamic>>.empty(growable: true);
       _addSystemPrompt();
     }
 
-    // Create multimodal message with image
-    String multimodalContent = "$inputText <__media__>";
-    Map<String, dynamic> userMessage = {
-      "role": "user",
-      "content": multimodalContent,
-      "media_data": [
-        {
-          "media_type": "image",
-          "file_path": imagePath,
-          "width": 0,
-          "height": 0
-        }
-      ]
-    };
+    messages.add(mediaPromptMessage(inputText, path, mediaType));
+    _ailiaLLMModel.setPrompt(messages);
+  }
 
-    messages.add(userMessage);
-
-    _ailiaLLMModel.setMultimodalPrompt(messages);
-
+  Future<String> chatWithAudioStream(
+      String inputText, String audioPath, void Function(String) onDelta,
+      {bool Function()? shouldContinue}) async {
+    _setMediaPrompt(inputText, audioPath, 'audio');
     String text = "";
-    while(true){
+    while (shouldContinue == null || shouldContinue()) {
       String? deltaText = _ailiaLLMModel.generate();
-      if (deltaText == null){
+      if (deltaText == null) {
         break;
       }
       text = text + deltaText;
+      onDelta(deltaText);
+      await Future.delayed(Duration.zero);
     }
 
     messages.add({"role": "assistant", "content": text});
     return text;
   }
 
-  void close(){
+  void close() {
     _ailiaLLMModel.close();
   }
 

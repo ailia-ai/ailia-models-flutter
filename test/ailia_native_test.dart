@@ -20,6 +20,7 @@ import 'package:ailia/ailia_model.dart';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:ailia_models_flutter/large_language_model/large_language_model.dart';
 import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
+import 'package:ailia_models_flutter/large_language_model/multimodal_large_language_model.dart';
 
 String? _findBundleDir() {
   for (final arch in ['arm64', 'x64']) {
@@ -103,6 +104,20 @@ void main() {
     final files = LargeLanguageModel().getModelList('gemma4-e2b', backend);
     expect(files, ['gemma/qnn/v1.5.0', 'gemma4-e2b-$soc.qnn']);
     expect(llmContextLength(files[1], backend), 0);
+    final vlmFiles =
+        MultimodalLargeLanguageModel().getModelList('gemma4-e2b-vlm', backend);
+    expect(vlmFiles, [
+      ...files,
+      'gemma/qnn/v1.5.0',
+      'gemma4-e2b-$soc-mmproj.qnn',
+    ]);
+    expect(
+        MultimodalLargeLanguageModel().getModelList('gemma4-e2b-alm', backend),
+        vlmFiles);
+    if (soc == 'sc8380xp') {
+      expect(LargeLanguageModel().getModelList('gemma4-e4b', backend),
+          ['gemma/qnn/v1.5.0', 'gemma4-e4b-sc8380xp.qnn']);
+    }
     // ignore: avoid_print
     print('HTP context binary: ${files[0]}/${files[1]}');
   });

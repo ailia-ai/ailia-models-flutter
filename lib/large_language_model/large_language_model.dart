@@ -21,6 +21,9 @@ class LargeLanguageModel {
     if (type == 'gemma4-e2b') {
       modelList.add("gemma");
       modelList.add("gemma-4-E2B-it-Q4_K_M.gguf");
+    } else if (type == 'gemma4-e4b') {
+      modelList.add("gemma");
+      modelList.add("gemma-4-E4B-it-Q4_K_M.gguf");
     } else {
       modelList.add("gemma");
       modelList.add("gemma-2-2b-it-Q4_K_M.gguf");

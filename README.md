@@ -58,8 +58,34 @@ flutter run
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [gemma2](/lib/large_language_model/) | [gemma-2-2b](https://huggingface.co/google/gemma-2-2b) | llama.cpp | 1.1.0 and later| |
-| [gemma3-multimodal](/lib/large_language_model/) | [gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) | llama.cpp | 1.4.2 and later | |
 | [gemma4-e2b](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | 1.4.2 and later | |
+| [gemma4-e4b](/lib/large_language_model/) | [gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it) | llama.cpp / QNN | 1.5.0 and later | |
+
+### VLM
+
+| Demo | Model | Files |
+|:-----|:------|:------|
+| Gemma 3 4B VLM | gemma-3-4b-it | GGUF + mmproj GGUF |
+| Gemma 4 E2B VLM | gemma-4-E2B-it | GGUF + mmproj GGUF, or SoC-specific QNN packages on HTP |
+
+VLM demos accept an image and a text query. Gemma 4 E2B VLM downloads
+`gemma-4-E2B-it-Q4_K_M.gguf` and `gemma-4-E2B-it-mmproj-F16.gguf` for
+CPU/GPU. On HTP it downloads both `gemma4-e2b-<soc>.qnn` and
+`gemma4-e2b-<soc>-mmproj.qnn` from `gemma/qnn/v1.5.0` for the detected
+Windows ARM64 SoC (`sc8380xp` or experimental `qcs6490`).
+
+### ALM
+
+Gemma 4 E2B ALM records microphone input as a local mono 16 kHz WAV.
+Select **Start recording**, **Stop recording**, then **Analyze audio**.
+The audio query can request transcription, summarization, or an answer
+about the recording. Responses stream into the result panel. The audio
+is passed directly to the model; no speech-to-text service is used.
+Temporary recordings are removed when the demo closes.
+
+ALM shares Gemma 4 E2B's model and mmproj downloads with VLM. CPU/GPU uses
+the GGUF pair, and HTP uses the SoC-specific `.qnn` pair. The projector's
+audio capability is checked before inference.
 
 ### Windows ARM64 LLM with QNN
 
@@ -70,6 +96,10 @@ the LLM `HTP` backend is available. Selecting `HTP` downloads the matching
 caches it in the normal model directory, and opens it with `n_ctx=0`
 (the package's compiled 8192-token context). Selecting CPU/GPU downloads
 and opens the usual GGUF. Gemma 2 and Gemma 3 do not offer QNN.
+
+Gemma 4 E4B text chat uses `gemma-4-E4B-it-Q4_K_M.gguf` on CPU/GPU or
+`gemma4-e4b-sc8380xp.qnn` on HTP. E4B's HTP backend is hidden on QCS6490,
+which supports E2B only.
 
 Use a QNN-enabled ailia LLM 1.5.0 Windows ARM64 runtime, QAIRT
 **2.47.0.260601**, and the Qualcomm NPU driver. The pinned Flutter binding

@@ -12,7 +12,7 @@ import 'camera_input.dart';
 import 'demo_session.dart';
 import 'still_image.dart';
 
-/// Multimodal (image + text) LLM demo: describes the sample image or a
+/// VLM (image + text) demo: describes the sample image or a
 /// still frame captured from the camera.
 class VlmDemoPage extends StatefulWidget {
   const VlmDemoPage({super.key, required this.model});
@@ -87,16 +87,17 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
         } else {
           _camera.clearCapture();
         }
-        await _runGemma3Multimodal();
+        await _runVlm();
       });
 
-  Future<void> _runGemma3Multimodal() async {
+  Future<void> _runVlm() async {
     MultimodalLargeLanguageModel multimodalLLM = MultimodalLargeLanguageModel();
-    List<String> modelList = multimodalLLM.getModelList();
-    if (!await _session.downloadModelList(modelList)) {
-      return;
-    }
     try {
+      final backend = BackendState.instance.selectedLlmBackend.value;
+      final modelList = multimodalLLM.getModelList(widget.model.id, backend);
+      if (!await _session.downloadModelList(modelList) || !mounted) {
+        return;
+      }
       String imagePath;
       final capturedPath = _camera.capturedPath;
       if (capturedPath != null) {
@@ -122,39 +123,35 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       _session.clearStatus();
       await Future.delayed(const Duration(milliseconds: 100));
 
-      await _performInference(multimodalLLM, imagePath);
+      if (!mounted) return;
+      await _performInference(multimodalLLM, imagePath, modelList, backend);
     } catch (e) {
       _session.showError(e);
+    } finally {
+      multimodalLLM.close();
     }
   }
 
-  Future<void> _performInference(
-      MultimodalLargeLanguageModel multimodalLLM, String imagePath) async {
+  Future<void> _performInference(MultimodalLargeLanguageModel multimodalLLM,
+      String imagePath, List<String> modelList, String selectedBackend) async {
     try {
       _session.showResult("Loading model with selected backend...");
 
-      File modelFile = File(await getModelPath("gemma-3-4b-it-Q4_K_M.gguf"));
-      File mmprojFile =
-          File(await getModelPath("gemma-3-4b-it-GGUF_mmproj-model-f16.gguf"));
+      File modelFile = File(await getModelPath(modelList[1]));
+      File mmprojFile = File(await getModelPath(modelList[3]));
 
       String inputText = _queryController.text.trim();
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
-
-      // ailia LLM has its own backend list; use the LLM selection.
-      String selectedBackend = BackendState.instance.selectedLlmBackend.value;
 
       multimodalLLM.openWithBackendName(modelFile, mmprojFile, selectedBackend);
       multimodalLLM.setSystemPrompt("画像を2-3文で簡潔に説明してください。");
       String outputText = multimodalLLM.chatWithImage(inputText, imagePath);
 
       int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${endTime - startTime} ms";
+      String profileText = "processing time : ${endTime - startTime} ms";
 
       _session.showResult("$outputText\n$profileText");
-
-      multimodalLLM.close();
     } catch (e) {
       _session.showError("Inference Error: $e");
     }

@@ -66,9 +66,14 @@ class BackendState {
   /// environment for QNN-ready models when present, otherwise the CPU
   /// backend (BLAS preferred). The user can still change the backend
   /// from the top bar afterwards.
-  void applyModelDefault({required bool preferQnn, bool forLlm = false}) {
+  void applyModelDefault(
+      {required bool preferQnn,
+      bool forLlm = false,
+      Set<String>? supportedQnnSocs}) {
     if (forLlm) {
-      _llmSupportsQnn = preferQnn && availableWindowsQnnSoc() != null;
+      final soc = preferQnn ? availableWindowsQnnSoc() : null;
+      _llmSupportsQnn = soc != null &&
+          (supportedQnnSocs == null || supportedQnnSocs.contains(soc));
       final backends = llmBackendList;
       if (backends.isNotEmpty) {
         selectedLlmBackend.value = backends.firstWhere(

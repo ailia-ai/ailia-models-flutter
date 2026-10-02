@@ -69,6 +69,7 @@ dependencies:
   path_provider:
   wav:
   image:
+  http: ^1.2.2
   ffi:
   audioplayers:
   permission_handler:
