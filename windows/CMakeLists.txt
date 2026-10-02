@@ -91,6 +91,25 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
+# Optional QAIRT runtime folder containing Windows ARM64 DLLs and the
+# device's matching Hexagon unsigned .so/.cat files (v73 or v68).
+# ailia_llm and its QNN plugin are bundled by the Flutter dependency.
+set(AILIA_LLM_QNN_RUNTIME_DIR "$ENV{AILIA_LLM_QNN_RUNTIME_DIR}" CACHE PATH
+  "QAIRT 2.47.0.260601 runtime files for Windows ARM64")
+if(AILIA_LLM_QNN_RUNTIME_DIR)
+  if(NOT (CMAKE_GENERATOR_PLATFORM MATCHES "^[Aa][Rr][Mm]64$" OR
+          CMAKE_SYSTEM_PROCESSOR MATCHES "^([Aa][Rr][Mm]64|aarch64)$"))
+    message(FATAL_ERROR "AILIA_LLM_QNN_RUNTIME_DIR requires an ARM64 build")
+  endif()
+  if(NOT EXISTS "${AILIA_LLM_QNN_RUNTIME_DIR}/QnnHtp.dll")
+    message(FATAL_ERROR "AILIA_LLM_QNN_RUNTIME_DIR must contain QnnHtp.dll")
+  endif()
+  install(DIRECTORY "${AILIA_LLM_QNN_RUNTIME_DIR}/"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime
+    FILES_MATCHING PATTERN "Qnn*.dll" PATTERN "libQnn*.so"
+                   PATTERN "*.cat")
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"

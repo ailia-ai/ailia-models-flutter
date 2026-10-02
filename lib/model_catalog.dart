@@ -17,11 +17,24 @@ class ModelInfo {
   /// source, ...).
   final String? defaultInputText;
 
+  /// Whether the model runs on the QNN (HTP) backend. QNN-ready models
+  /// show a QNN badge on the home screen and default to the QNN
+  /// backend when their demo opens.
+  final bool qnnSupported;
+  final Set<String>? supportedQnnSocs;
+
   const ModelInfo(this.id, this.name, this.category, this.input,
-      {this.sampleAsset, this.defaultInputText});
+      {this.sampleAsset,
+      this.defaultInputText,
+      this.qnnSupported = false,
+      this.supportedQnnSocs});
 
   bool get isSpeechToText => category == 'Speech To Text';
   bool get isTextToSpeech => category == 'Text To Speech';
+  bool get usesLlmBackend =>
+      category == 'Large Language Model' ||
+      category == 'VLM' ||
+      category == 'ALM';
 
   /// Text-only LLMs get the multi-turn chat UI.
   bool get isChat =>
@@ -31,9 +44,9 @@ class ModelInfo {
 const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'resnet50', 'ResNet50', 'Image Classification', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo('vit', 'ViT-B/16', 'Image Classification', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo(
       'sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image,
       sampleAsset: 'assets/truck.jpg'),
@@ -41,16 +54,16 @@ const List<ModelInfo> modelCatalog = [
       ModelInputKind.image,
       sampleAsset: 'assets/truck.jpg', defaultInputText: 'truck'),
   ModelInfo('u2net', 'U-2-Net', 'Background Removal', ModelInputKind.image,
-      sampleAsset: 'assets/input_u2net.png'),
+      sampleAsset: 'assets/input_u2net.png', qnnSupported: true),
   ModelInfo('yolox', 'YOLOX-S', 'Object Detection', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo('detic', 'Detic', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/desk.jpg'),
   ModelInfo('bytetrack', 'ByteTrack', 'Object Tracking', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo('lw-human-pose', 'Lightweight Human Pose', 'Pose Estimation',
       ModelInputKind.image,
-      sampleAsset: 'assets/person.jpg'),
+      sampleAsset: 'assets/person.jpg', qnnSupported: true),
   ModelInfo(
       'whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
   ModelInfo(
@@ -60,7 +73,8 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo',
       'Speech To Text', ModelInputKind.audio),
   ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text',
-      ModelInputKind.audio),
+      ModelInputKind.audio,
+      qnnSupported: true),
   ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing',
       ModelInputKind.text),
   ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing',
@@ -86,9 +100,18 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
   ModelInfo(
-      'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text),
-  ModelInfo('gemma3-multimodal', 'Gemma 3 4B Multimodal',
-      'Large Language Model', ModelInputKind.imageText),
+      'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text,
+      qnnSupported: true),
+  ModelInfo(
+      'gemma4-e4b', 'Gemma 4 E4B', 'Large Language Model', ModelInputKind.text,
+      qnnSupported: true, supportedQnnSocs: {'sc8380xp'}),
+  ModelInfo(
+      'gemma3-multimodal', 'Gemma 3 4B VLM', 'VLM', ModelInputKind.imageText),
+  ModelInfo(
+      'gemma4-e2b-vlm', 'Gemma 4 E2B VLM', 'VLM', ModelInputKind.imageText,
+      qnnSupported: true),
+  ModelInfo('gemma4-e2b-alm', 'Gemma 4 E2B ALM', 'ALM', ModelInputKind.audio,
+      qnnSupported: true),
 ];
 
 /// Remote (folder, filename) pairs for the image demos, shared by the
@@ -142,6 +165,10 @@ IconData categoryIcon(String category) {
       return Icons.record_voice_over;
     case 'Large Language Model':
       return Icons.chat_bubble_outline;
+    case 'VLM':
+      return Icons.image_search;
+    case 'ALM':
+      return Icons.mic;
     default:
       return Icons.memory;
   }
@@ -165,6 +192,8 @@ Color categoryColor(BuildContext context, String category) {
     case 'Text To Speech':
       return scheme.error;
     case 'Large Language Model':
+    case 'VLM':
+    case 'ALM':
       return Colors.indigo;
     default:
       return scheme.outline;

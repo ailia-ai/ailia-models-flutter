@@ -3,7 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../model_catalog.dart';
+import '../large_language_model/qnn_model.dart';
 import '../utils/download_model.dart';
+import '../utils/qnn_device.dart';
+import '../utils/qnn_support.dart';
 import 'demo_screen.dart';
 
 /// Representative file per model, used to show a "downloaded" badge on
@@ -26,7 +29,10 @@ const Map<String, String> _markerFiles = {
   'gpt-sovits-zh': 'jieba.dict.utf8',
   'gemma2': 'gemma-2-2b-it-Q4_K_M.gguf',
   'gemma4-e2b': 'gemma-4-E2B-it-Q4_K_M.gguf',
+  'gemma4-e4b': 'gemma-4-E4B-it-Q4_K_M.gguf',
   'gemma3-multimodal': 'gemma-3-4b-it-Q4_K_M.gguf',
+  'gemma4-e2b-vlm': 'gemma-4-E2B-it-mmproj-F16.gguf',
+  'gemma4-e2b-alm': 'gemma-4-E2B-it-mmproj-F16.gguf',
 };
 
 /// Top screen: model cards grouped by category. Selecting a card
@@ -80,6 +86,19 @@ class _HomeScreenState extends State<HomeScreen> {
       if (File('$base${entry.value}').existsSync()) {
         downloaded.add(entry.key);
       }
+    }
+    if (windowsQnnSocs
+        .any((soc) => File('${base}gemma4-e2b-$soc.qnn').existsSync())) {
+      downloaded.add('gemma4-e2b');
+    }
+    if (windowsQnnSocs.any((soc) =>
+        File('${base}gemma4-e2b-$soc.qnn').existsSync() &&
+        File('${base}gemma4-e2b-$soc-mmproj.qnn').existsSync())) {
+      downloaded.add('gemma4-e2b-vlm');
+      downloaded.add('gemma4-e2b-alm');
+    }
+    if (File('${base}gemma4-e4b-sc8380xp.qnn').existsSync()) {
+      downloaded.add('gemma4-e4b');
     }
     if (mounted) {
       setState(() {
@@ -178,6 +197,35 @@ class ModelCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
+                  if (showQnnMark(
+                    qnnSupported: model.qnnSupported,
+                    usesLlmBackend: model.usesLlmBackend,
+                    soc: qnnSocName,
+                  )) ...[
+                    Tooltip(
+                      message: 'Runs on the QNN (NPU) backend',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: Theme.of(context).colorScheme.tertiary),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'QNN',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.tertiary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   if (downloaded)
                     Tooltip(
                       message: 'Model downloaded',

@@ -220,7 +220,7 @@ class DemoPageScaffold extends StatelessWidget {
         title: Text(model.name),
         actions: [
           // ailia LLM uses its own backend list, so switch the selector.
-          BackendSelector(forLlm: model.category == 'Large Language Model'),
+          BackendSelector(forLlm: model.usesLlmBackend),
         ],
       ),
       body: SingleChildScrollView(
