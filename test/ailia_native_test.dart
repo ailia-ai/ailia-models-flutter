@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ailia/ailia_model.dart';
 import 'package:ailia_llm/ailia_llm_model.dart';
+import 'package:ailia_models_flutter/backend_state.dart';
 import 'package:ailia_models_flutter/large_language_model/large_language_model.dart';
 
 String? _findBundleDir() {
@@ -88,6 +89,19 @@ void main() {
     expect(backendList, isNotEmpty);
     // ignore: avoid_print
     print('ailia_llm backends: $backendList');
+  });
+
+  test('LLM selector exposes GGUF CPU/GPU backends', () {
+    final state = BackendState.instance;
+    final backends = state.llmBackendList;
+    expect(backends, isNotEmpty);
+    expect(backends, contains('CPU'));
+    expect(
+        backends.any((name) =>
+            name.toUpperCase().contains('HTP') ||
+            name.toUpperCase().contains('QNN')),
+        isFalse);
+    expect(backends, contains(state.selectedLlmBackend.value));
   });
 
   test('gemma2 chat produces a reply', () {
