@@ -46,7 +46,7 @@ const List<ModelInfo> modelCatalog = [
       'resnet50', 'ResNet50', 'Image Classification', ModelInputKind.image,
       sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo('vit', 'ViT-B/16', 'Image Classification', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo(
       'sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image,
       sampleAsset: 'assets/truck.jpg'),
