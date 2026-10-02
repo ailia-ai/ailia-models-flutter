@@ -87,6 +87,12 @@ ALM shares Gemma 4 E2B's model and mmproj downloads with VLM. CPU/GPU uses
 the GGUF pair, and HTP uses the SoC-specific `.qnn` pair. The projector's
 audio capability is checked before inference.
 
+The ailia SDK QNN selector and model-list badges are disabled on SoCs without
+HTP FP16 support (including QCS6490). The per-SoC policy follows
+[ailia-models-kotlin PR #33](https://github.com/ailia-ai/ailia-models-kotlin/pull/33)
+and QAIRT 2.47. Unknown SoCs retain the existing behavior. This restriction
+does not apply to ailia LLM: LLM, VLM and ALM keep their QNN support.
+
 ### Windows ARM64 LLM with QNN
 
 Gemma 4 E2B uses the NPU by default when the Windows ARM64 process can

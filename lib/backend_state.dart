@@ -5,6 +5,8 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:flutter/material.dart';
 import 'large_language_model/qnn_model.dart';
 import 'large_language_model/qnn_runtime.dart';
+import 'utils/qnn_device.dart';
+import 'utils/qnn_support.dart';
 
 /// Holds the backend selections shared by every screen. The selection
 /// lives in the top bar on both the home screen and the demo screens.
@@ -35,9 +37,7 @@ class BackendState {
   /// meaningful for the demos; hide the QNN CPU and GPU variants from
   /// the selector.
   static bool _isSelectable(AiliaEnvironment e) {
-    final name = e.name.toUpperCase();
-    return !(name.contains('QNN') &&
-        (name.contains('CPU') || name.contains('GPU')));
+    return isSdkQnnEnvironmentSelectable(e.name, qnnSocName);
   }
 
   List<AiliaEnvironment> get envList {

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../model_catalog.dart';
 import '../large_language_model/qnn_model.dart';
 import '../utils/download_model.dart';
+import '../utils/qnn_device.dart';
+import '../utils/qnn_support.dart';
 import 'demo_screen.dart';
 
 /// Representative file per model, used to show a "downloaded" badge on
@@ -195,7 +197,11 @@ class ModelCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  if (model.qnnSupported) ...[
+                  if (showQnnMark(
+                    qnnSupported: model.qnnSupported,
+                    usesLlmBackend: model.usesLlmBackend,
+                    soc: qnnSocName,
+                  )) ...[
                     Tooltip(
                       message: 'Runs on the QNN (NPU) backend',
                       child: Container(

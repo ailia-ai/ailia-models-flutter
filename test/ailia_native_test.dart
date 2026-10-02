@@ -21,6 +21,8 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:ailia_models_flutter/large_language_model/large_language_model.dart';
 import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
 import 'package:ailia_models_flutter/large_language_model/multimodal_large_language_model.dart';
+import 'package:ailia_models_flutter/backend_state.dart';
+import 'package:ailia_models_flutter/utils/qnn_device.dart';
 
 String? _findBundleDir() {
   for (final arch in ['arm64', 'x64']) {
@@ -99,7 +101,11 @@ void main() {
       return;
     }
     final soc = AiliaLLMModel.getQNNModelName();
+    expect(qnnSocName, soc.trim().toLowerCase());
     expect(windowsQnnSocs, contains(soc));
+    BackendState.instance.applyModelDefault(preferQnn: true, forLlm: true);
+    expect(isLlmQnnBackend(BackendState.instance.selectedLlmBackend.value),
+        isTrue);
     final backend = backends.first;
     final files = LargeLanguageModel().getModelList('gemma4-e2b', backend);
     expect(files, ['gemma/qnn/v1.5.0', 'gemma4-e2b-$soc.qnn']);
