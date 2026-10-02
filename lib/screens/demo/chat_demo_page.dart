@@ -70,7 +70,7 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
     }
     await AiliaLicense.checkAndDownloadLicense();
     final llm = LargeLanguageModel();
-    final modelList = llm.getModelList(widget.model.id);
+    final modelList = llm.getModelList(widget.model.id, selectedBackend);
     final url =
         "https://storage.googleapis.com/ailia-models/${modelList[0]}/${modelList[1]}";
     final modelFile = await _session.downloadFile(url, modelList[1]);
@@ -83,7 +83,12 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
     }
 
     _session.setStatus("Loading model with selected backend...");
-    llm.openWithBackendName(modelFile, selectedBackend);
+    try {
+      llm.openWithBackendName(modelFile, selectedBackend);
+    } catch (_) {
+      llm.close();
+      rethrow;
+    }
     if (!mounted) {
       llm.close();
       return;
@@ -183,8 +188,7 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
         paintReply();
       }
       int endTime = DateTime.now().millisecondsSinceEpoch;
-      _session
-          .showResult("processing time : ${endTime - startTime} ms");
+      _session.showResult("processing time : ${endTime - startTime} ms");
     } catch (e) {
       _session.showError("Inference Error: $e");
     } finally {

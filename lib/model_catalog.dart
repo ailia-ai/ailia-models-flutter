@@ -91,7 +91,8 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
   ModelInfo(
-      'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text),
+      'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text,
+      qnnSupported: true),
   ModelInfo('gemma3-multimodal', 'Gemma 3 4B Multimodal',
       'Large Language Model', ModelInputKind.imageText),
 ];

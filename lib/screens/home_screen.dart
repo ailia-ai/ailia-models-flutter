@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../model_catalog.dart';
+import '../large_language_model/qnn_model.dart';
 import '../utils/download_model.dart';
 import 'demo_screen.dart';
 
@@ -80,6 +81,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (File('$base${entry.value}').existsSync()) {
         downloaded.add(entry.key);
       }
+    }
+    if (windowsQnnSocs
+        .any((soc) => File('${base}gemma4-e2b-$soc.qnn').existsSync())) {
+      downloaded.add('gemma4-e2b');
     }
     if (mounted) {
       setState(() {

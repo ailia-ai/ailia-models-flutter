@@ -3,6 +3,8 @@ import 'package:ailia/ailia.dart'
 import 'package:ailia/ailia_model.dart';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:flutter/material.dart';
+import 'large_language_model/qnn_model.dart';
+import 'large_language_model/qnn_runtime.dart';
 
 /// Holds the backend selections shared by every screen. The selection
 /// lives in the top bar on both the home screen and the demo screens.
@@ -19,6 +21,7 @@ class BackendState {
 
   List<String> _llmBackendList = [];
   final ValueNotifier<String> selectedLlmBackend = ValueNotifier<String>('');
+  bool _llmSupportsQnn = false;
 
   /// The BLAS-accelerated CPU backend (CPU-AppleAccelerate on macOS,
   /// CPU-IntelMKL on Windows, CPU-OpenBlas on Android, ...).
@@ -39,16 +42,15 @@ class BackendState {
 
   List<AiliaEnvironment> get envList {
     if (_envList.isEmpty) {
-      _envList =
-          AiliaModel.getEnvironmentList().where(_isSelectable).toList();
+      _envList = AiliaModel.getEnvironmentList().where(_isSelectable).toList();
       if (_envList.isNotEmpty) {
         // Default to the BLAS backend when available; it is much faster
         // than the plain CPU environment. The QNN build has no BLAS, so
         // fall back to the plain CPU environment rather than QNN-HTP.
         selectedEnvId.value = _envList
             .firstWhere(_isBlas,
-                orElse: () => _envList.firstWhere(_isCpu,
-                    orElse: () => _envList.first))
+                orElse: () =>
+                    _envList.firstWhere(_isCpu, orElse: () => _envList.first))
             .id;
       }
     }
@@ -64,7 +66,21 @@ class BackendState {
   /// environment for QNN-ready models when present, otherwise the CPU
   /// backend (BLAS preferred). The user can still change the backend
   /// from the top bar afterwards.
-  void applyModelDefault({required bool preferQnn}) {
+  void applyModelDefault({required bool preferQnn, bool forLlm = false}) {
+    if (forLlm) {
+      _llmSupportsQnn = preferQnn && availableWindowsQnnSoc() != null;
+      final backends = llmBackendList;
+      if (backends.isNotEmpty) {
+        selectedLlmBackend.value = backends.firstWhere(
+          (name) => _llmSupportsQnn && isLlmQnnBackend(name),
+          orElse: () => backends.firstWhere(
+            (name) => name.toUpperCase() == 'CPU',
+            orElse: () => backends.first,
+          ),
+        );
+      }
+      return;
+    }
     final list = envList;
     if (list.isEmpty) {
       return;
@@ -86,12 +102,14 @@ class BackendState {
   List<String> get llmBackendList {
     if (_llmBackendList.isEmpty) {
       _llmBackendList = AiliaLLMModel.getBackendList();
-      if (_llmBackendList.isNotEmpty &&
-          !_llmBackendList.contains(selectedLlmBackend.value)) {
-        selectedLlmBackend.value = _llmBackendList.first;
-      }
     }
-    return _llmBackendList;
+    final list = _llmBackendList
+        .where((name) => _llmSupportsQnn || !isLlmQnnBackend(name))
+        .toList();
+    if (list.isNotEmpty && !list.contains(selectedLlmBackend.value)) {
+      selectedLlmBackend.value = list.first;
+    }
+    return list;
   }
 }
 

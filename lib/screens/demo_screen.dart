@@ -28,8 +28,10 @@ class _DemoScreenState extends State<DemoScreen> {
     super.initState();
     // Each demo starts on its default backend: QNN (HTP) for the
     // QNN-ready models, the CPU backend for everything else.
-    BackendState.instance
-        .applyModelDefault(preferQnn: widget.model.qnnSupported);
+    BackendState.instance.applyModelDefault(
+      preferQnn: widget.model.qnnSupported,
+      forLlm: widget.model.category == 'Large Language Model',
+    );
   }
 
   @override
