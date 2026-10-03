@@ -23,11 +23,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: main
-      resolved-ref: "008ebaa9b592a5f49c287010c9868218eab5b8b8"
+      ref: "v1.4.3_beta10"
+      resolved-ref: d7ae10057873f4406e6ec1c97abc92bde22a06b5
       url: "https://github.com/ailia-ai/ailia-llm-flutter.git"
     source: git
-    version: "1.4.1"
+    version: "1.5.0"
   ailia_speech:
     dependency: "direct main"
     description:
@@ -319,7 +319,7 @@ packages:
     source: sdk
     version: "0.0.0"
   http:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: http
       sha256: b9c29a161230ee03d3ccf545097fccd9b87a5264228c5d348202e0f0c28f9010
@@ -423,7 +423,7 @@ packages:
     source: hosted
     version: "2.2.0"
   path:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: path
       sha256: "75cca69d1490965be98c73ceaea117e8a04dd21217b37b292c9ddbec0d955bc5"

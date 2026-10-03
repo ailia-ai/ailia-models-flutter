@@ -7,6 +7,7 @@ import 'demo/stt_demo_page.dart';
 import 'demo/tts_demo_page.dart';
 import 'demo/vision_demo_page.dart';
 import 'demo/vlm_demo_page.dart';
+import 'demo/alm_demo_page.dart';
 
 /// Entry point for a model demo: picks the page for the model's
 /// category. Each page owns its input UI, inference glue and result
@@ -21,6 +22,9 @@ class DemoScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     if (model.isChat) {
       return ChatDemoPage(model: model);
+    }
+    if (model.category == 'ALM') {
+      return AlmDemoPage(model: model);
     }
     if (model.input == ModelInputKind.imageText) {
       return VlmDemoPage(model: model);
