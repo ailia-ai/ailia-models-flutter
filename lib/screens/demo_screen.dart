@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../model_catalog.dart';
+import 'demo/alm_demo_page.dart';
 import 'demo/chat_demo_page.dart';
+import 'demo/diffusion_demo_page.dart';
 import 'demo/nlp_demo_page.dart';
 import 'demo/stt_demo_page.dart';
 import 'demo/tts_demo_page.dart';
 import 'demo/vision_demo_page.dart';
 import 'demo/vlm_demo_page.dart';
-import 'demo/alm_demo_page.dart';
 
 /// Entry point for a model demo: picks the page for the model's
 /// category. Each page owns its input UI, inference glue and result
@@ -22,6 +23,9 @@ class DemoScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     if (model.isChat) {
       return ChatDemoPage(model: model);
+    }
+    if (model.category == 'Diffusion') {
+      return DiffusionDemoPage(model: model);
     }
     if (model.category == 'ALM') {
       return AlmDemoPage(model: model);

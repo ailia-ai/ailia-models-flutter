@@ -55,6 +55,11 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('lw-human-pose', 'Lightweight Human Pose', 'Pose Estimation',
       ModelInputKind.image,
       sampleAsset: 'assets/person.jpg'),
+  ModelInfo('sdxl', 'Stable Diffusion XL', 'Diffusion',
+      ModelInputKind.imageText,
+      sampleAsset: 'assets/astronaut.jpg',
+      defaultInputText:
+          'Astronaut in a jungle, cold color palette, muted colors, detailed, 8k'),
   ModelInfo(
       'whisper_tiny', 'Whisper Tiny', 'Speech To Text', ModelInputKind.audio),
   ModelInfo(
@@ -141,6 +146,8 @@ IconData categoryIcon(String category) {
       return Icons.route;
     case 'Pose Estimation':
       return Icons.accessibility_new;
+    case 'Diffusion':
+      return Icons.brush;
     case 'Audio Processing':
       return Icons.graphic_eq;
     case 'Speech To Text':
@@ -181,6 +188,8 @@ Color categoryColor(BuildContext context, String category) {
     case 'VLM':
     case 'ALM':
       return Colors.indigo;
+    case 'Diffusion':
+      return Colors.deepPurple;
     default:
       return scheme.outline;
   }
