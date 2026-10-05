@@ -73,6 +73,7 @@ VLM demos accept an image and a text query. Gemma 4 E2B VLM downloads
 CPU/GPU. On HTP it downloads both `gemma4-e2b-<soc>.qnn` and
 `gemma4-e2b-<soc>-mmproj.qnn` from `gemma/qnn/v1.5.0` for the detected
 Windows ARM64 SoC (`sc8380xp` or experimental `qcs6490`).
+Model loading and generation run in a Dart isolate so the UI remains responsive.
 
 ### ALM
 
@@ -86,6 +87,7 @@ Temporary recordings are removed when the demo closes.
 ALM shares Gemma 4 E2B's model and mmproj downloads with VLM. CPU/GPU uses
 the GGUF pair, and HTP uses the SoC-specific `.qnn` pair. The projector's
 audio capability is checked before inference.
+ALM model loading and generation also run in a Dart isolate.
 
 The ailia SDK QNN selector and model-list badges are disabled on SoCs without
 HTP FP16 support (including QCS6490). The per-SoC policy follows
@@ -155,6 +157,12 @@ load the ARM64 QNN plugin.
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
 |[lw-human-pose](/lib/pose_estimation/) | [Lightweight OpenPose](https://github.com/Daniil-Osokin/lightweight-human-pose-estimation.pytorch) | Pytorch | 1.2.1 and later | [JP](https://tech.ailia.ai/lightweighthumanpose-%E9%AB%98%E9%80%9F%E3%81%AB%E9%AA%A8%E6%A0%BC%E6%A4%9C%E5%87%BA%E3%82%92%E8%A1%8C%E3%81%86%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92%E3%83%A2%E3%83%87%E3%83%AB-2f2b229ada4b) |
+
+### Diffusion
+
+| | Model | Exported From | Supported Ailia Version | Blog |
+|:-----------|------------:|:------------:|:------------:|:------------:|
+|[sdxl](/lib/diffusion/sdxl) | [Stable Diffusion XL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) | Pytorch | 1.6.0 and later | |
 
 ### Text To Speech
 

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ailia_models_flutter/large_language_model/multimodal_large_language_model.dart';
 import 'package:ailia_models_flutter/large_language_model/multimodal_model_files.dart';
+import 'package:ailia_models_flutter/large_language_model/media_prompt.dart';
 import 'package:ailia_models_flutter/model_catalog.dart';
 
 void main() {
@@ -31,6 +32,17 @@ void main() {
       'gemma',
       'gemma-4-E2B-it-mmproj-F16.gguf',
     ]);
+    expect(() => multimodalModelFiles('unknown', 'CPU'),
+        throwsUnsupportedError);
+  });
+
+  test('multimodal context size follows model format and backend', () {
+    expect(MultimodalLargeLanguageModel.contextSize(
+        'gemma4-e2b-vlm', 'gemma4.gguf', 'CPU'), 16384);
+    expect(MultimodalLargeLanguageModel.contextSize(
+        'gemma4-e2b-vlm', 'gemma4.qnn', 'HTP'), 0);
+    expect(() => MultimodalLargeLanguageModel.contextSize(
+        'gemma4-e2b-vlm', 'gemma4.gguf', 'HTP'), throwsArgumentError);
   });
 
   test('HTP uses matching text and projector packages for each SoC', () {
@@ -62,6 +74,20 @@ void main() {
     expect(
         () => model.openWithBackendName(
             File('gemma4.gguf'), File('mmproj.qnn'), 'CPU'),
+        throwsArgumentError);
+  });
+
+  test('image prompt carries image dimensions and rejects video', () {
+    final prompt = mediaPromptMessage('Describe', '/image.png', 'image');
+    expect(prompt['media_data'], [
+      {
+        'media_type': 'image',
+        'file_path': '/image.png',
+        'width': 0,
+        'height': 0,
+      }
+    ]);
+    expect(() => mediaPromptMessage('Describe', '/video.mp4', 'video'),
         throwsArgumentError);
   });
 }

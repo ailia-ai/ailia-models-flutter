@@ -237,7 +237,7 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
                 decoration: BoxDecoration(
                   color: message['role'] == 'user'
                       ? scheme.primaryContainer
-                      : scheme.surfaceVariant,
+                      : scheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: SelectableText(message['content'] ?? ''),
