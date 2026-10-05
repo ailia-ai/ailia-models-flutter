@@ -70,7 +70,8 @@ flutter run
 
 VLM demos accept an image and a text query. Gemma 4 E2B VLM downloads
 `gemma-4-E2B-it-Q4_K_M.gguf` and `gemma-4-E2B-it-mmproj-F16.gguf`
-and runs on the selected CPU/GPU backend.
+and runs on the selected CPU/GPU backend. Model loading and generation run
+in a Dart isolate so the UI remains responsive.
 
 ### ALM
 
@@ -83,6 +84,7 @@ Temporary recordings are removed when the demo closes.
 
 ALM shares Gemma 4 E2B's model and mmproj GGUF downloads with VLM.
 The projector's audio capability is checked before inference.
+ALM model loading and generation also run in a Dart isolate.
 
 ### Natural Language Processing
 

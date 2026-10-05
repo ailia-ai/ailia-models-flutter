@@ -25,6 +25,7 @@ class AlmDemoPage extends StatefulWidget {
 
 class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
   final DemoSession _session = DemoSession();
+  final MultimodalLargeLanguageModel _alm = MultimodalLargeLanguageModel();
   final AudioRecorder _recorder = AudioRecorder();
   final WaveformController _waveform = WaveformController();
   final TextEditingController _query =
@@ -39,6 +40,7 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
   @override
   void dispose() {
     _amplitude?.cancel();
+    _alm.cancel();
     unawaited(_releaseRecorder());
     _query.dispose();
     _waveform.dispose();
@@ -164,34 +166,39 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
     final backend = BackendState.instance.selectedLlmBackend.value;
     await _session.run(() async {
       if (!mounted) return;
-      final model = MultimodalLargeLanguageModel();
       try {
-        final files = model.getModelList(widget.model.id);
+        final files = _alm.getModelList(widget.model.id);
         if (!await _session.downloadModelList(files) || !mounted) return;
         _session.setStatus('Loading audio model...');
-        model.openWithBackendName(File(await getModelPath(files[1])),
-            File(await getModelPath(files[3])), backend,
-            mediaType: 'audio');
+        final modelFile = File(await getModelPath(files[1]));
+        final mmprojFile = File(await getModelPath(files[3]));
         if (!mounted) return;
-        model.setSystemPrompt('あなたは音声を理解する親切なアシスタントです。');
         _session.clearStatus();
         _session.showResult('');
         final watch = Stopwatch()..start();
         final reply = StringBuffer();
         int lastPaint = 0;
-        await model.chatWithAudioStream(query, audio.path, (delta) {
-          reply.write(delta);
-          if (watch.elapsedMilliseconds - lastPaint >= 33) {
-            lastPaint = watch.elapsedMilliseconds;
-            _session.showResult(reply.toString());
-          }
-        }, shouldContinue: () => mounted);
+        await _alm.chatWithAudioIsolate(
+            model: modelFile,
+            mmproj: mmprojFile,
+            backend: backend,
+            nCtx: MultimodalLargeLanguageModel.contextSize(widget.model.id),
+            systemPrompt: 'あなたは音声を理解する親切なアシスタントです。',
+            inputText: query,
+            audioPath: audio.path,
+            onDelta: (delta) {
+              reply.write(delta);
+              if (watch.elapsedMilliseconds - lastPaint >= 33) {
+                lastPaint = watch.elapsedMilliseconds;
+                _session.showResult(reply.toString());
+              }
+            });
         if (mounted) {
           _session.showResult(
               '$reply\nprocessing time : ${watch.elapsedMilliseconds} ms');
         }
       } finally {
-        model.close();
+        _alm.cancel();
         if (!mounted) await _deleteRecordings();
       }
     });
