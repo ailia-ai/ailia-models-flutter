@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../model_catalog.dart';
+import 'demo/alm_demo_page.dart';
 import 'demo/chat_demo_page.dart';
 import 'demo/diffusion_demo_page.dart';
 import 'demo/nlp_demo_page.dart';
@@ -25,6 +26,9 @@ class DemoScreen extends StatelessWidget {
     }
     if (model.category == 'Diffusion') {
       return DiffusionDemoPage(model: model);
+    }
+    if (model.category == 'ALM') {
+      return AlmDemoPage(model: model);
     }
     if (model.input == ModelInputKind.imageText) {
       return VlmDemoPage(model: model);

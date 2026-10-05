@@ -44,7 +44,13 @@ class BackendState {
 
   List<String> get llmBackendList {
     if (_llmBackendList.isEmpty) {
-      _llmBackendList = AiliaLLMModel.getBackendList();
+      // This app opens GGUF models on CPU/GPU. The dependency also exposes
+      // context-binary backends, which cannot open the files used here.
+      _llmBackendList = AiliaLLMModel.getBackendList()
+          .where((name) =>
+              !name.toUpperCase().contains('HTP') &&
+              !name.toUpperCase().contains('QNN'))
+          .toList();
       if (_llmBackendList.isNotEmpty &&
           !_llmBackendList.contains(selectedLlmBackend.value)) {
         selectedLlmBackend.value = _llmBackendList.first;

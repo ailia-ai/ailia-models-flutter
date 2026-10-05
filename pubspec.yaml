@@ -59,7 +59,7 @@ dependencies:
   ailia_llm:
     git:
       url: https://github.com/ailia-ai/ailia-llm-flutter.git
-      ref: main
+      ref: v1.5.0
 
   ailia_tracker:
     git:
@@ -67,8 +67,10 @@ dependencies:
       ref: main
 
   path_provider:
+  path:
   wav:
   image:
+  http: ^1.2.2
   ffi:
   audioplayers:
   permission_handler:

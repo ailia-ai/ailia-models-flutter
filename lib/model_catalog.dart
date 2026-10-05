@@ -22,6 +22,10 @@ class ModelInfo {
 
   bool get isSpeechToText => category == 'Speech To Text';
   bool get isTextToSpeech => category == 'Text To Speech';
+  bool get usesLlmBackend =>
+      category == 'Large Language Model' ||
+      category == 'VLM' ||
+      category == 'ALM';
 
   /// Text-only LLMs get the multi-turn chat UI.
   bool get isChat =>
@@ -92,8 +96,13 @@ const List<ModelInfo> modelCatalog = [
       'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
   ModelInfo(
       'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text),
-  ModelInfo('gemma3-multimodal', 'Gemma 3 4B Multimodal',
-      'Large Language Model', ModelInputKind.imageText),
+  ModelInfo(
+      'gemma4-e4b', 'Gemma 4 E4B', 'Large Language Model', ModelInputKind.text),
+  ModelInfo(
+      'gemma3-multimodal', 'Gemma 3 4B VLM', 'VLM', ModelInputKind.imageText),
+  ModelInfo(
+      'gemma4-e2b-vlm', 'Gemma 4 E2B VLM', 'VLM', ModelInputKind.imageText),
+  ModelInfo('gemma4-e2b-alm', 'Gemma 4 E2B ALM', 'ALM', ModelInputKind.audio),
 ];
 
 /// Remote (folder, filename) pairs for the image demos, shared by the
@@ -149,6 +158,10 @@ IconData categoryIcon(String category) {
       return Icons.record_voice_over;
     case 'Large Language Model':
       return Icons.chat_bubble_outline;
+    case 'VLM':
+      return Icons.image_search;
+    case 'ALM':
+      return Icons.mic;
     default:
       return Icons.memory;
   }
@@ -172,6 +185,8 @@ Color categoryColor(BuildContext context, String category) {
     case 'Text To Speech':
       return scheme.error;
     case 'Large Language Model':
+    case 'VLM':
+    case 'ALM':
       return Colors.indigo;
     case 'Diffusion':
       return Colors.deepPurple;

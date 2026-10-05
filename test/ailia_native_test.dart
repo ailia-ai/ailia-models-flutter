@@ -21,6 +21,7 @@ import 'package:ailia/ailia_model.dart';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:ailia_models_flutter/diffusion/sdxl/sdxl.dart';
 import 'package:ailia_models_flutter/diffusion/sdxl/sdxl_worker.dart';
+import 'package:ailia_models_flutter/backend_state.dart';
 import 'package:ailia_models_flutter/large_language_model/large_language_model.dart';
 import 'package:image/image.dart' as img;
 
@@ -247,6 +248,19 @@ void main() {
       sdxl.close();
     }
   }, timeout: const Timeout(Duration(minutes: 60)));
+
+  test('LLM selector exposes GGUF CPU/GPU backends', () {
+    final state = BackendState.instance;
+    final backends = state.llmBackendList;
+    expect(backends, isNotEmpty);
+    expect(backends, contains('CPU'));
+    expect(
+        backends.any((name) =>
+            name.toUpperCase().contains('HTP') ||
+            name.toUpperCase().contains('QNN')),
+        isFalse);
+    expect(backends, contains(state.selectedLlmBackend.value));
+  });
 
   test('gemma2 chat produces a reply', () {
     final modelFile = File(_modelCachePath('gemma-2-2b-it-Q4_K_M.gguf'));

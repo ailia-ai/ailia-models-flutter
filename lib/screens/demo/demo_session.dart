@@ -220,7 +220,7 @@ class DemoPageScaffold extends StatelessWidget {
         title: Text(model.name),
         actions: [
           // ailia LLM uses its own backend list, so switch the selector.
-          BackendSelector(forLlm: model.category == 'Large Language Model'),
+          BackendSelector(forLlm: model.usesLlmBackend),
         ],
       ),
       body: SingleChildScrollView(
@@ -322,7 +322,10 @@ class DemoPageScaffold extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+          color: Theme.of(context)
+              .colorScheme
+              .surfaceContainerHighest
+              .withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Align(
