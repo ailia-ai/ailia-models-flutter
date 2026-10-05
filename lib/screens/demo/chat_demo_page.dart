@@ -83,7 +83,12 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
     }
 
     _session.setStatus("Loading model with selected backend...");
-    llm.openWithBackendName(modelFile, selectedBackend);
+    try {
+      llm.openWithBackendName(modelFile, selectedBackend);
+    } catch (_) {
+      llm.close();
+      rethrow;
+    }
     if (!mounted) {
       llm.close();
       return;
@@ -233,7 +238,7 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
                 decoration: BoxDecoration(
                   color: message['role'] == 'user'
                       ? scheme.primaryContainer
-                      : scheme.surfaceVariant,
+                      : scheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: SelectableText(message['content'] ?? ''),
