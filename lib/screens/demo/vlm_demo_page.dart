@@ -105,7 +105,7 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
 
   Future<void> _runMultimodal() async {
     List<String> modelList = _vlm.getModelList(widget.model.id);
-    if (!await _session.downloadModelList(modelList)) {
+    if (!await _session.downloadModelList(modelList) || !mounted) {
       return;
     }
     try {
@@ -134,21 +134,21 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       _session.clearStatus();
       await Future.delayed(const Duration(milliseconds: 100));
 
-      await _performInference(imagePath);
+      if (!mounted) return;
+      await _performInference(imagePath, modelList);
     } catch (e) {
       _session.showError(e);
     }
   }
 
-  Future<void> _performInference(String imagePath) async {
+  Future<void> _performInference(
+      String imagePath, List<String> modelList) async {
     try {
       _session.showResult("Loading model with selected backend...");
 
       final type = widget.model.id;
-      File modelFile = File(
-          await getModelPath(MultimodalLargeLanguageModel.modelFileName(type)));
-      File mmprojFile = File(await getModelPath(
-          MultimodalLargeLanguageModel.mmprojFileName(type)));
+      File modelFile = File(await getModelPath(modelList[1]));
+      File mmprojFile = File(await getModelPath(modelList[3]));
 
       String inputText = _queryController.text.trim();
 
@@ -161,7 +161,7 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       // panel, repainting at most once per frame.
       final reply = StringBuffer();
       int lastPaintMs = 0;
-      String outputText = await _vlm.chatWithImage(
+      String outputText = await _vlm.chatWithImageIsolate(
         model: modelFile,
         mmproj: mmprojFile,
         backend: selectedBackend,
@@ -180,8 +180,7 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       );
 
       int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText =
-          "processing time : ${endTime - startTime} ms";
+      String profileText = "processing time : ${endTime - startTime} ms";
 
       _session.showResult("$outputText\n$profileText");
     } catch (e) {

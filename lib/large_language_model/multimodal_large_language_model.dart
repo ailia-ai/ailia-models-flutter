@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'dart:isolate';
-
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:http/http.dart' as http;
+import 'multimodal_model_files.dart';
+import 'media_prompt.dart';
 
-/// Everything the inference isolate needs, passed as the spawn argument.
-class _VlmRequest {
+class _MediaRequest {
   final SendPort sendPort;
   final String modelPath;
   final String mmprojPath;
@@ -13,9 +13,10 @@ class _VlmRequest {
   final int nCtx;
   final String systemPrompt;
   final String inputText;
-  final String imagePath;
+  final String mediaPath;
+  final String mediaType;
 
-  const _VlmRequest({
+  const _MediaRequest({
     required this.sendPort,
     required this.modelPath,
     required this.mmprojPath,
@@ -23,109 +24,211 @@ class _VlmRequest {
     required this.nCtx,
     required this.systemPrompt,
     required this.inputText,
-    required this.imagePath,
+    required this.mediaPath,
+    required this.mediaType,
   });
 }
 
-/// Runs one open -> generate -> close cycle off the UI thread, streaming
-/// each token back as {"delta": ...} and ending with {"done": fullText}
-/// or {"error": message}.
-void _vlmIsolateFunc(_VlmRequest request) {
+void _mediaIsolateFunc(_MediaRequest request) {
   final llm = AiliaLLMModel();
   try {
-    List<String> backendList = AiliaLLMModel.getBackendList();
-    if (!backendList.contains(request.backend)) {
+    final backends = AiliaLLMModel.getBackendList();
+    if (!backends.contains(request.backend)) {
       throw Exception(
-          "Backend '${request.backend}' not available. Available: $backendList");
+          "Backend '${request.backend}' not available. Available: $backends");
     }
-
     llm.open(request.modelPath, request.nCtx, backend: request.backend);
     llm.openMultimodalProjectorFile(request.mmprojPath);
-
-    Map<String, bool> capabilities = llm.getMultimodalCapabilities();
-    if (capabilities['vision'] != true) {
-      throw Exception("Vision capabilities not available");
+    final capability = request.mediaType == 'audio' ? 'audio' : 'vision';
+    if (llm.getMultimodalCapabilities()[capability] != true) {
+      throw Exception('$capability capabilities not available');
     }
 
     final messages = <Map<String, dynamic>>[];
     if (request.systemPrompt.isNotEmpty) {
-      messages.add({"role": "system", "content": request.systemPrompt});
+      messages.add({'role': 'system', 'content': request.systemPrompt});
     }
-    messages.add({
-      "role": "user",
-      "content": "${request.inputText} <__media__>",
-      "media_data": [
-        {
-          "media_type": "image",
-          "file_path": request.imagePath,
-          "width": 0,
-          "height": 0
-        }
-      ]
-    });
+    messages.add(mediaPromptMessage(
+        request.inputText, request.mediaPath, request.mediaType));
     llm.setPrompt(messages);
 
     final text = StringBuffer();
     while (true) {
-      String? deltaText = llm.generate();
-      if (deltaText == null) {
-        break;
-      }
-      text.write(deltaText);
-      request.sendPort.send({"delta": deltaText});
+      final delta = llm.generate();
+      if (delta == null) break;
+      text.write(delta);
+      request.sendPort.send({'delta': delta});
     }
-    request.sendPort.send({"done": text.toString()});
+    request.sendPort.send({'done': text.toString()});
   } catch (e) {
-    request.sendPort.send({"error": "$e"});
+    request.sendPort.send({'error': '$e'});
   } finally {
     llm.close();
   }
 }
 
-/// Multimodal (image + text) LLM inference. The heavy native calls
-/// (model load and token generation) run in a spawned isolate so the UI
-/// thread never blocks; tokens stream back through [chatWithImage]'s
-/// onDelta callback.
 class MultimodalLargeLanguageModel {
+  final AiliaLLMModel _ailiaLLMModel = AiliaLLMModel();
   Isolate? _isolate;
   ReceivePort? _receivePort;
 
-  static String modelFileName(String type) {
-    if (type == 'gemma4-e2b-multimodal') {
-      return "gemma-4-E2B-it-Q4_K_M.gguf";
+  static int contextSize(String type) =>
+      type == 'gemma4-e2b-vlm' ? 16384 : 8192;
+
+  List<String> getModelList([String type = 'gemma3-multimodal']) =>
+      multimodalModelFiles(type);
+
+  List<Map<String, dynamic>> messages =
+      List<Map<String, dynamic>>.empty(growable: true);
+  String systemPrompt = "";
+
+  void open(File model, File mmproj) {
+    int nCtx = 8192; // Context size for multimodal model
+
+    // Initialize backend list before opening model
+    List<String> backendList = AiliaLLMModel.getBackendList();
+
+    if (backendList.isEmpty) {
+      throw Exception("No backends available for ailia LLM");
     }
-    return "gemma-3-4b-it-Q4_K_M.gguf";
-  }
 
-  static String mmprojFileName(String type) {
-    if (type == 'gemma4-e2b-multimodal') {
-      return "gemma-4-E2B-it-mmproj-F16.gguf";
+    // Use the first available backend
+    String backend = backendList[0];
+
+    // Open the base text model
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+
+    // Open the multimodal projector
+    _ailiaLLMModel.openMultimodalProjectorFile(mmproj.path);
+
+    // Get multimodal capabilities to verify setup
+    Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
+    if (!capabilities['vision']!) {
+      throw Exception("Vision capabilities not available");
     }
-    return "gemma-3-4b-it-GGUF_mmproj-model-f16.gguf";
   }
 
-  static int contextSize(String type) {
-    if (type == 'gemma4-e2b-multimodal') {
-      return 16384;
+  void openWithBackend(File model, File mmproj, String selectedBackend) {
+    int nCtx = 8192; // Context size for multimodal model
+
+    // Initialize backend list before opening model
+    List<String> backendList = AiliaLLMModel.getBackendList();
+
+    if (backendList.isEmpty) {
+      throw Exception("No backends available for ailia LLM");
     }
-    return 8192;
+
+    // Map environment names to backend names
+    String backend;
+    if (selectedBackend.contains("Vulkan") || selectedBackend.contains("GPU")) {
+      backend = "Vulkan";
+    } else if (selectedBackend.contains("Metal")) {
+      backend = "Metal";
+    } else {
+      backend = "CPU";
+    }
+
+    // Verify the selected backend is available
+    if (!backendList.contains(backend)) {
+      throw Exception(
+          "Selected backend '$backend' not available. Available: $backendList");
+    }
+
+    // Open the base text model with selected backend
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+
+    // Open the multimodal projector
+    _ailiaLLMModel.openMultimodalProjectorFile(mmproj.path);
+
+    // Get multimodal capabilities to verify setup
+    Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
+    if (!capabilities['vision']!) {
+      throw Exception("Vision capabilities not available");
+    }
   }
 
-  List<String> getModelList([String type = 'gemma3-multimodal']) {
-    List<String> modelList = List<String>.empty(growable: true);
+  /// Opens the model with an exact backend name taken from
+  /// AiliaLLMModel.getBackendList() (e.g. CPU / Vulkan / OpenCL / Metal).
+  void openWithBackendName(File model, File mmproj, String backend,
+      {String mediaType = 'image'}) {
+    if (mediaType != 'image' && mediaType != 'audio') {
+      throw ArgumentError('Unsupported media type: $mediaType');
+    }
+    const nCtx = 8192;
 
-    modelList.add("gemma");
-    modelList.add(modelFileName(type));
-    modelList.add("gemma");
-    modelList.add(mmprojFileName(type));
+    List<String> backendList = AiliaLLMModel.getBackendList();
+    if (!backendList.contains(backend)) {
+      throw Exception(
+          "Backend '$backend' not available. Available: $backendList");
+    }
 
-    return modelList;
+    _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+
+    // Open the multimodal projector
+    _ailiaLLMModel.openMultimodalProjectorFile(mmproj.path);
+
+    // Get multimodal capabilities to verify setup
+    Map<String, bool> capabilities = _ailiaLLMModel.getMultimodalCapabilities();
+    if (capabilities[mediaType == 'audio' ? 'audio' : 'vision'] != true) {
+      throw Exception('$mediaType capabilities not available');
+    }
   }
 
-  /// Describes [imagePath] guided by [inputText], reporting each
-  /// generated token through [onDelta]. Cancelling with [cancel]
-  /// resolves the future with the text generated so far.
-  Future<String> chatWithImage({
+  void setSystemPrompt(String prompt) {
+    systemPrompt = prompt;
+    _addSystemPrompt();
+  }
+
+  void _addSystemPrompt() {
+    if (systemPrompt == "") {
+      return;
+    }
+    messages.add({"role": "system", "content": systemPrompt});
+  }
+
+  String chatWithImage(String inputText, String imagePath) {
+    _setMediaPrompt(inputText, imagePath, 'image');
+    String text = "";
+    while (true) {
+      String? deltaText = _ailiaLLMModel.generate();
+      if (deltaText == null) break;
+      text += deltaText;
+    }
+    messages.add({"role": "assistant", "content": text});
+    return text;
+  }
+
+  void _setMediaPrompt(String inputText, String path, String mediaType) {
+    if (_ailiaLLMModel.contextFull()) {
+      messages = List<Map<String, dynamic>>.empty(growable: true);
+      _addSystemPrompt();
+    }
+
+    messages.add(mediaPromptMessage(inputText, path, mediaType));
+    _ailiaLLMModel.setPrompt(messages);
+  }
+
+  Future<String> chatWithAudioStream(
+      String inputText, String audioPath, void Function(String) onDelta,
+      {bool Function()? shouldContinue}) async {
+    _setMediaPrompt(inputText, audioPath, 'audio');
+    String text = "";
+    while (shouldContinue == null || shouldContinue()) {
+      String? deltaText = _ailiaLLMModel.generate();
+      if (deltaText == null) {
+        break;
+      }
+      text = text + deltaText;
+      onDelta(deltaText);
+      await Future.delayed(Duration.zero);
+    }
+
+    messages.add({"role": "assistant", "content": text});
+    return text;
+  }
+
+  /// Runs VLM inference outside the UI isolate and streams generated text.
+  Future<String> chatWithImageIsolate({
     required File model,
     required File mmproj,
     required String backend,
@@ -134,12 +237,58 @@ class MultimodalLargeLanguageModel {
     required String inputText,
     required String imagePath,
     void Function(String delta)? onDelta,
+  }) =>
+      _chatWithMediaIsolate(
+        model: model,
+        mmproj: mmproj,
+        backend: backend,
+        nCtx: nCtx,
+        systemPrompt: systemPrompt,
+        inputText: inputText,
+        mediaPath: imagePath,
+        mediaType: 'image',
+        onDelta: onDelta,
+      );
+
+  /// Runs ALM inference outside the UI isolate and streams generated text.
+  Future<String> chatWithAudioIsolate({
+    required File model,
+    required File mmproj,
+    required String backend,
+    required int nCtx,
+    required String systemPrompt,
+    required String inputText,
+    required String audioPath,
+    void Function(String delta)? onDelta,
+  }) =>
+      _chatWithMediaIsolate(
+        model: model,
+        mmproj: mmproj,
+        backend: backend,
+        nCtx: nCtx,
+        systemPrompt: systemPrompt,
+        inputText: inputText,
+        mediaPath: audioPath,
+        mediaType: 'audio',
+        onDelta: onDelta,
+      );
+
+  Future<String> _chatWithMediaIsolate({
+    required File model,
+    required File mmproj,
+    required String backend,
+    required int nCtx,
+    required String systemPrompt,
+    required String inputText,
+    required String mediaPath,
+    required String mediaType,
+    void Function(String delta)? onDelta,
   }) async {
     final receivePort = ReceivePort();
     _receivePort = receivePort;
     _isolate = await Isolate.spawn(
-      _vlmIsolateFunc,
-      _VlmRequest(
+      _mediaIsolateFunc,
+      _MediaRequest(
         sendPort: receivePort.sendPort,
         modelPath: model.path,
         mmprojPath: mmproj.path,
@@ -147,7 +296,8 @@ class MultimodalLargeLanguageModel {
         nCtx: nCtx,
         systemPrompt: systemPrompt,
         inputText: inputText,
-        imagePath: imagePath,
+        mediaPath: mediaPath,
+        mediaType: mediaType,
       ),
       onExit: receivePort.sendPort,
     );
@@ -156,21 +306,19 @@ class MultimodalLargeLanguageModel {
     try {
       await for (final message in receivePort) {
         if (message == null) {
-          // onExit fired without a result: the isolate died.
-          throw Exception("Inference isolate exited unexpectedly");
+          throw Exception('Inference isolate exited unexpectedly');
         }
         final map = message as Map;
-        if (map.containsKey("delta")) {
-          final delta = map["delta"] as String;
+        if (map.containsKey('delta')) {
+          final delta = map['delta'] as String;
           text.write(delta);
           onDelta?.call(delta);
-        } else if (map.containsKey("done")) {
-          return map["done"] as String;
-        } else if (map.containsKey("error")) {
-          throw Exception(map["error"]);
+        } else if (map.containsKey('done')) {
+          return map['done'] as String;
+        } else if (map.containsKey('error')) {
+          throw Exception(map['error']);
         }
       }
-      // cancel() closed the port mid-run.
       return text.toString();
     } finally {
       receivePort.close();
@@ -179,12 +327,16 @@ class MultimodalLargeLanguageModel {
     }
   }
 
-  /// Kills a run in flight (e.g. the page was disposed).
   void cancel() {
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
     _receivePort?.close();
     _receivePort = null;
+  }
+
+  void close() {
+    cancel();
+    _ailiaLLMModel.close();
   }
 
   // Helper method to download a file
