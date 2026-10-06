@@ -1,6 +1,11 @@
 // Opt-in smoke test with the SDK library on the platform's library search path:
 // AILIA_TOOL_USE_MODEL=/path/to/gemma-4-E2B-it-Q4_K_M.gguf
 // AILIA_TOOL_USE_BACKEND=Metal flutter test test/tool_use_native_test.dart
+// On macOS, set DYLD_LIBRARY_PATH to the built app's Contents/Frameworks.
+// Launch Flutter via the Dart binary to retain that variable across startup:
+// $FLUTTER_ROOT/bin/cache/dart-sdk/bin/dart \
+//   $FLUTTER_ROOT/bin/cache/flutter_tools.snapshot test --no-pub \
+//   test/tool_use_native_test.dart
 import 'dart:io';
 
 import 'package:ailia_llm/ailia_llm_model.dart';
