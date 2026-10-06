@@ -34,7 +34,8 @@ class ModelInfo {
   bool get usesLlmBackend =>
       category == 'Large Language Model' ||
       category == 'VLM' ||
-      category == 'ALM';
+      category == 'ALM' ||
+      category == 'Tool Use';
 
   /// Text-only LLMs get the multi-turn chat UI.
   bool get isChat =>
@@ -117,6 +118,9 @@ const List<ModelInfo> modelCatalog = [
       qnnSupported: true),
   ModelInfo('gemma4-e2b-alm', 'Gemma 4 E2B ALM', 'ALM', ModelInputKind.audio,
       qnnSupported: true),
+  ModelInfo('gemma4-e2b-tool-use', 'Gemma 4 E2B Tool Use', 'Tool Use',
+      ModelInputKind.text, defaultInputText: 'エアコンの温度を20度にしてください'),
+
 ];
 
 /// Remote (folder, filename) pairs for the image demos, shared by the
@@ -170,6 +174,8 @@ IconData categoryIcon(String category) {
       return Icons.translate;
     case 'Text To Speech':
       return Icons.record_voice_over;
+    case 'Tool Use':
+      return Icons.build_outlined;
     case 'Large Language Model':
       return Icons.chat_bubble_outline;
     case 'VLM':
@@ -201,6 +207,7 @@ Color categoryColor(BuildContext context, String category) {
     case 'Large Language Model':
     case 'VLM':
     case 'ALM':
+    case 'Tool Use':
       return Colors.indigo;
     case 'Diffusion':
       return Colors.deepPurple;

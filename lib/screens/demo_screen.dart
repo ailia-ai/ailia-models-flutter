@@ -8,6 +8,7 @@ import 'demo/diffusion_demo_page.dart';
 import 'demo/nlp_demo_page.dart';
 import 'demo/stt_demo_page.dart';
 import 'demo/tts_demo_page.dart';
+import 'demo/tool_use_demo_page.dart';
 import 'demo/vision_demo_page.dart';
 import 'demo/vlm_demo_page.dart';
 
@@ -40,6 +41,10 @@ class _DemoScreenState extends State<DemoScreen> {
   @override
   Widget build(BuildContext context) {
     final model = widget.model;
+    if (model.category == 'Tool Use') {
+      return ToolUseDemoPage(model: model);
+    }
+
     if (model.isChat) {
       return ChatDemoPage(model: model);
     }
