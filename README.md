@@ -63,28 +63,16 @@ flutter run
 
 ### VLM
 
-| Demo | Model | Files |
-|:-----|:------|:------|
-| Gemma 3 4B VLM | gemma-3-4b-it | GGUF + mmproj GGUF |
-| Gemma 4 E2B VLM | gemma-4-E2B-it | GGUF + mmproj GGUF |
-
-VLM demos accept an image and a text query. Gemma 4 E2B VLM downloads
-`gemma-4-E2B-it-Q4_K_M.gguf` and `gemma-4-E2B-it-mmproj-F16.gguf`
-and runs on the selected CPU/GPU backend. Model loading and generation run
-in a Dart isolate so the UI remains responsive.
+| | Model | Exported From | Supported Ailia Version | Blog |
+|:-----------|------------:|:------------:|:------------:|:------------:|
+| [gemma3-multimodal](/lib/large_language_model/) | [gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) | llama.cpp | | |
+| [gemma4-e2b-vlm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | | |
 
 ### ALM
 
-Gemma 4 E2B ALM records microphone input as a local mono 16 kHz WAV.
-Select **Start recording**, **Stop recording**, then **Analyze audio**.
-The audio query can request transcription, summarization, or an answer
-about the recording. Responses stream into the result panel. The audio
-is passed directly to the model; no speech-to-text service is used.
-Temporary recordings are removed when the demo closes.
-
-ALM shares Gemma 4 E2B's model and mmproj GGUF downloads with VLM.
-The projector's audio capability is checked before inference.
-ALM model loading and generation also run in a Dart isolate.
+| | Model | Exported From | Supported Ailia Version | Blog |
+|:-----------|------------:|:------------:|:------------:|:------------:|
+| [gemma4-e2b-alm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | | |
 
 ### Natural Language Processing
 
