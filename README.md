@@ -74,6 +74,12 @@ flutter run
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [gemma4-e2b-alm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | | |
 
+### Tool Use
+
+| | Model | Exported From | Supported Ailia Version | Blog |
+|:-----------|------------:|:------------:|:------------:|:------------:|
+| [gemma4-e2b-tool-use](/lib/large_language_model/tool_use_model.dart) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | 1.5.0 and later | |
+
 ### Natural Language Processing
 
 | | Model | Exported From | Supported Ailia Version | Blog |

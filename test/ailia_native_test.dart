@@ -8,6 +8,7 @@
 //
 // Run with:
 //   flutter test test/ailia_native_test.dart
+@TestOn('windows')
 @Timeout(Duration(minutes: 5))
 
 import 'dart:ffi';
