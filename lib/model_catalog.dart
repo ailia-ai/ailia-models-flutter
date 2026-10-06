@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'large_language_model/qnn_model.dart';
+
 /// What kind of input the demo consumes. Used to decide which input
 /// source toggle (image/webcam or audio/mic) is shown on the demo screen.
 enum ModelInputKind { image, audio, text, imageText }
@@ -119,8 +121,10 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('gemma4-e2b-alm', 'Gemma 4 E2B ALM', 'ALM', ModelInputKind.audio,
       qnnSupported: true),
   ModelInfo('gemma4-e2b-tool-use', 'Gemma 4 E2B Tool Use', 'Tool Use',
-      ModelInputKind.text, defaultInputText: 'エアコンの温度を20度にしてください'),
-
+      ModelInputKind.text,
+      defaultInputText: 'エアコンの温度を20度にしてください',
+      qnnSupported: true,
+      supportedQnnSocs: windowsQnnSocs),
 ];
 
 /// Remote (folder, filename) pairs for the image demos, shared by the

@@ -78,7 +78,7 @@ flutter run
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
-| [gemma4-e2b-tool-use](/lib/large_language_model/tool_use_model.dart) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | 1.5.0 and later | |
+| [gemma4-e2b-tool-use](/lib/large_language_model/tool_use_model.dart) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | 1.5.0 and later | |
 
 ### Natural Language Processing
 
@@ -126,7 +126,7 @@ The ailia SDK QNN selector and model-list badges are disabled on SoCs without
 HTP FP16 support (including QCS6490). The per-SoC policy follows
 [ailia-models-kotlin PR #33](https://github.com/ailia-ai/ailia-models-kotlin/pull/33)
 and QAIRT 2.47. Unknown SoCs retain the existing behavior. This restriction
-does not apply to ailia LLM: LLM, VLM and ALM keep their QNN support.
+does not apply to ailia LLM: LLM, VLM, ALM and Tool Use keep their QNN support.
 
 ### Windows ARM64 LLM
 
@@ -137,6 +137,14 @@ the LLM `HTP` backend is available. Selecting `HTP` downloads the matching
 caches it in the normal model directory, and opens it with `n_ctx=0`
 (the package's compiled 8192-token context). Selecting CPU/GPU downloads
 and opens the usual GGUF. Gemma 2 and Gemma 3 do not offer QNN.
+
+Gemma 4 E2B Tool Use shares the text-chat model cache and follows the same
+CPU/GPU or HTP selection. On HTP it uses the detected SoC's `.qnn` package
+with `n_ctx=0`; tool definitions and structured JSON history use the same
+SDK APIs as CPU/GPU. No multimodal projector is required.
+
+Gemma 4 E2B VLM and ALM additionally download the matching
+`gemma4-e2b-<soc>-mmproj.qnn` projector when using HTP.
 
 Gemma 4 E4B text chat uses `gemma-4-E4B-it-Q4_K_M.gguf` on CPU/GPU or
 `gemma4-e4b-sc8380xp.qnn` on HTP. E4B's HTP backend is hidden on QCS6490,
