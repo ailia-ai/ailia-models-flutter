@@ -150,6 +150,8 @@ void runMultimodalWorker(SendPort events,
       events.send({'type': 'ready'});
       // Each run supplies a fresh prompt; prior media and answers are omitted.
       final systemPrompt = request['systemPrompt'] as String;
+      // Clear native KV cache even when the media path matches the last run.
+      model.setPrompt([]);
       model.setPrompt([
         if (systemPrompt.isNotEmpty)
           {'role': 'system', 'content': systemPrompt},

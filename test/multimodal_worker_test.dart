@@ -11,6 +11,7 @@ class FakeMediaModel extends AiliaLLMModel {
   int opens = 0;
   String? next;
   bool endless = false;
+  bool cacheCleared = false;
 
   @override
   void open(String path, int nCtx, {String backend = 'CPU'}) {
@@ -26,6 +27,16 @@ class FakeMediaModel extends AiliaLLMModel {
 
   @override
   void setPrompt(List<Map<String, dynamic>> messages) {
+    if (messages.isEmpty) {
+      cacheCleared = true;
+      next = null;
+      endless = false;
+      events.send({'type': 'cacheCleared'});
+      return;
+    }
+    if (!cacheCleared) throw StateError('KV cache was not cleared');
+    cacheCleared = false;
+    events.send({'type': 'promptSet'});
     if (messages.last['content'] == 'fail <__media__>') {
       throw StateError('Failed prompt');
     }
@@ -63,6 +74,24 @@ Map<String, dynamic> request({String media = 'image', String path = 'first'}) =>
     };
 
 void main() {
+  for (final media in ['image', 'audio']) {
+    test('$media clears KV cache before every prompt for the same media path',
+        () async {
+      final worker = MultimodalWorker(entryPoint: fakeWorker);
+      addTearDown(worker.cancel);
+      for (var run = 0; run < 2; run++) {
+        final events = <String>[];
+        expect(
+            await worker.run(request(media: media), onEvent: (event) {
+              events.add(event['type'] as String);
+            }),
+            '1:2:first');
+        expect(events.where((e) => e == 'cacheCleared' || e == 'promptSet'),
+            ['cacheCleared', 'promptSet']);
+      }
+    });
+  }
+
   test('image and audio reuse the model and replace the previous prompt',
       () async {
     final worker = MultimodalWorker(entryPoint: fakeWorker);

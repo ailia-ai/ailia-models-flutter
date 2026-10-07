@@ -152,6 +152,7 @@ class MultimodalLargeLanguageModel {
     }
 
     messages.add(mediaPromptMessage(inputText, path, mediaType));
+    _ailiaLLMModel.setPrompt([]);
     _ailiaLLMModel.setPrompt(messages);
   }
 

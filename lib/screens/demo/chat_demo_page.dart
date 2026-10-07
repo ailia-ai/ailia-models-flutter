@@ -82,7 +82,10 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
       return;
     }
 
-    _session.setStatus("Loading model with selected backend...");
+    _session.setStatus('Model Loading...');
+    // Paint the loading label before the synchronous native open blocks the UI.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
     try {
       llm.openWithBackendName(modelFile, selectedBackend);
     } catch (_) {
