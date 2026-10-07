@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
@@ -93,17 +94,20 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
     }
   }
 
-  Future<void> _run() => _session.run(() async {
-        if (_useCamera) {
-          // The captured frame freezes the preview; inference uses it.
-          await _camera.captureStill();
-        } else {
-          _camera.clearCapture();
-        }
-        await _runMultimodal();
-      });
+  Future<void> _run() {
+    final query = _queryController.text.trim();
+    return _session.run(() async {
+      if (_useCamera) {
+        // The captured frame freezes the preview; inference uses it.
+        await _camera.captureStill();
+      } else {
+        _camera.clearCapture();
+      }
+      await _runMultimodal(query);
+    });
+  }
 
-  Future<void> _runMultimodal() async {
+  Future<void> _runMultimodal(String query) async {
     List<String> modelList = _vlm.getModelList(widget.model.id);
     if (!await _session.downloadModelList(modelList) || !mounted) {
       return;
@@ -135,22 +139,20 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       await Future.delayed(const Duration(milliseconds: 100));
 
       if (!mounted) return;
-      await _performInference(imagePath, modelList);
+      await _performInference(imagePath, modelList, query);
     } catch (e) {
       _session.showError(e);
     }
   }
 
   Future<void> _performInference(
-      String imagePath, List<String> modelList) async {
+      String imagePath, List<String> modelList, String query) async {
     try {
-      _session.showResult("Loading model with selected backend...");
+      _session.showResult('Preparing image...');
 
       final type = widget.model.id;
       File modelFile = File(await getModelPath(modelList[1]));
       File mmprojFile = File(await getModelPath(modelList[3]));
-
-      String inputText = _queryController.text.trim();
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
 
@@ -161,14 +163,19 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       // panel, repainting at most once per frame.
       final reply = StringBuffer();
       int lastPaintMs = 0;
+      double? ttftMs;
+      double? tps;
       String outputText = await _vlm.chatWithImageIsolate(
         model: modelFile,
         mmproj: mmprojFile,
         backend: selectedBackend,
         nCtx: MultimodalLargeLanguageModel.contextSize(type),
-        systemPrompt: "画像を2-3文で簡潔に説明してください。",
-        inputText: inputText,
+        systemPrompt: '',
+        inputText: query,
         imagePath: imagePath,
+        onModelLoading: () =>
+            _session.showResult('Loading model with selected backend...'),
+        onModelLoaded: () => _session.showResult('Image Processing...'),
         onDelta: (delta) {
           reply.write(delta);
           final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -177,10 +184,16 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
             _session.showResult(reply.toString());
           }
         },
+        onMetrics: (firstMs, tokensPerSecond) {
+          ttftMs = firstMs;
+          tps = tokensPerSecond;
+        },
       );
 
       int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText = "processing time : ${endTime - startTime} ms";
+      String profileText = 'processing time : ${endTime - startTime} ms\n'
+          'TTFT: ${formatTtft(ttftMs)}\n'
+          'TPS: ${formatTps(tps)} tokens/s';
 
       _session.showResult("$outputText\n$profileText");
     } catch (e) {

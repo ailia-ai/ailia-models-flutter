@@ -87,6 +87,7 @@ void main() {
     });
     expect(model.airConditionerTemperature, 20);
     expect(events.where((e) => e['type'] == 'turnStart'), hasLength(2));
+    expect(events.where((e) => e['type'] == 'metrics'), hasLength(2));
     expect(events.where((e) => e['type'] == 'tool'), hasLength(1));
     await model.chat('ありがとう', thinking: false, onEvent: (_) {});
     expect(native.prompts.last.length, 5);

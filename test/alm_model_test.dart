@@ -33,6 +33,18 @@ void main() {
     ]);
   });
 
+  test('ALM sends the entered query without a system prompt', () {
+    final messages = mediaPromptMessages(
+      systemPrompt: '',
+      inputText: '話者は何人ですか？',
+      mediaPath: '/recording.wav',
+      mediaType: 'audio',
+    );
+    expect(messages, hasLength(1));
+    expect(messages.single['role'], 'user');
+    expect(messages.single['content'], '話者は何人ですか？ <__media__>');
+  });
+
   test('E4B uses the chat UI and downloads its GGUF', () {
     final model = modelCatalog.singleWhere((m) => m.id == 'gemma4-e4b');
     expect(model.isChat, isTrue);

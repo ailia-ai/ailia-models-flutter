@@ -16,3 +16,15 @@ Map<String, dynamic> mediaPromptMessage(
     ],
   };
 }
+
+List<Map<String, dynamic>> mediaPromptMessages({
+  required String systemPrompt,
+  required String inputText,
+  required String mediaPath,
+  required String mediaType,
+}) {
+  return [
+    if (systemPrompt.isNotEmpty) {'role': 'system', 'content': systemPrompt},
+    mediaPromptMessage(inputText, mediaPath, mediaType),
+  ];
+}

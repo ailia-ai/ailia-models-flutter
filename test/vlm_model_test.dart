@@ -47,6 +47,18 @@ void main() {
     ]);
   });
 
+  test('VLM sends the entered query as the user prompt', () {
+    final messages = mediaPromptMessages(
+      systemPrompt: '',
+      inputText: '画像の文字を読んでください。',
+      mediaPath: '/image.png',
+      mediaType: 'image',
+    );
+    expect(messages, hasLength(1));
+    expect(messages.single['role'], 'user');
+    expect(messages.single['content'], '画像の文字を読んでください。 <__media__>');
+  });
+
   test('rejects unsupported media before calling the native runtime', () {
     expect(
         () => MultimodalLargeLanguageModel().openWithBackendName(
