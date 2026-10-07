@@ -5,11 +5,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:wav/wav.dart';
 
 import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
+import '../../large_language_model/recorded_wav.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
 import 'demo_session.dart';
@@ -130,13 +130,9 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
       await _amplitude?.cancel();
       _amplitude = null;
       if (path == null) throw StateError('No microphone recording was saved.');
-      final wav = await Wav.readFile(path);
-      if (wav.channels.isEmpty || wav.channels.first.isEmpty) {
-        throw StateError('The microphone recording is empty.');
-      }
+      final seconds = await prepareRecordedWav(File(path));
       if (!mounted) return;
       safeSetState(() => _audio = File(path));
-      final seconds = wav.channels.first.length / wav.samplesPerSecond;
       _session.showResult(
           'Recorded ${seconds.toStringAsFixed(1)} seconds. Press Analyze audio.');
     } catch (e) {
