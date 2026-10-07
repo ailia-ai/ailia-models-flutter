@@ -32,17 +32,23 @@ void main() {
       'gemma',
       'gemma-4-E2B-it-mmproj-F16.gguf',
     ]);
-    expect(() => multimodalModelFiles('unknown', 'CPU'),
-        throwsUnsupportedError);
+    expect(
+        () => multimodalModelFiles('unknown', 'CPU'), throwsUnsupportedError);
   });
 
   test('multimodal context size follows model format and backend', () {
-    expect(MultimodalLargeLanguageModel.contextSize(
-        'gemma4-e2b-vlm', 'gemma4.gguf', 'CPU'), 16384);
-    expect(MultimodalLargeLanguageModel.contextSize(
-        'gemma4-e2b-vlm', 'gemma4.qnn', 'HTP'), 0);
-    expect(() => MultimodalLargeLanguageModel.contextSize(
-        'gemma4-e2b-vlm', 'gemma4.gguf', 'HTP'), throwsArgumentError);
+    expect(
+        MultimodalLargeLanguageModel.contextSize(
+            'gemma4-e2b-vlm', 'gemma4.gguf', 'CPU'),
+        16384);
+    expect(
+        MultimodalLargeLanguageModel.contextSize(
+            'gemma4-e2b-vlm', 'gemma4.qnn', 'HTP'),
+        0);
+    expect(
+        () => MultimodalLargeLanguageModel.contextSize(
+            'gemma4-e2b-vlm', 'gemma4.gguf', 'HTP'),
+        throwsArgumentError);
   });
 
   test('HTP uses matching text and projector packages for each SoC', () {
@@ -87,6 +93,26 @@ void main() {
         'height': 0,
       }
     ]);
+  });
+
+  test('VLM sends the entered query as the user prompt', () {
+    final messages = mediaPromptMessages(
+      systemPrompt: '',
+      inputText: '画像の文字を読んでください。',
+      mediaPath: '/image.png',
+      mediaType: 'image',
+    );
+    expect(messages, hasLength(1));
+    expect(messages.single['role'], 'user');
+    expect(messages.single['content'], '画像の文字を読んでください。 <__media__>');
+  });
+
+  test('rejects unsupported media before calling the native runtime', () {
+    expect(
+        () => MultimodalLargeLanguageModel().openWithBackendName(
+            File('model.gguf'), File('mmproj.gguf'), 'CPU',
+            mediaType: 'video'),
+        throwsArgumentError);
     expect(() => mediaPromptMessage('Describe', '/video.mp4', 'video'),
         throwsArgumentError);
   });

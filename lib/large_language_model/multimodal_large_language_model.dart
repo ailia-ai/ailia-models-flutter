@@ -152,7 +152,8 @@ class MultimodalLargeLanguageModel {
     }
 
     messages.add(mediaPromptMessage(inputText, path, mediaType));
-    // Empty prompts are rejected by the native SDK. Replace media with text first.
+    // Replace the previous media prompt with valid text before the next input.
+    // Empty prompts are rejected by the native SDK; do not generate here.
     _ailiaLLMModel.setPrompt([
       {'role': 'user', 'content': '.'},
     ]);
@@ -188,8 +189,9 @@ class MultimodalLargeLanguageModel {
     required String inputText,
     required String imagePath,
     void Function(String delta)? onDelta,
-    void Function()? onModelLoaded,
+    void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
+    void Function()? onModelLoaded,
   }) =>
       _chatWithMediaIsolate(
         model: model,
@@ -201,8 +203,9 @@ class MultimodalLargeLanguageModel {
         mediaPath: imagePath,
         mediaType: 'image',
         onDelta: onDelta,
-        onModelLoaded: onModelLoaded,
+        onMetrics: onMetrics,
         onModelLoading: onModelLoading,
+        onModelLoaded: onModelLoaded,
       );
 
   /// Runs ALM inference outside the UI isolate and streams generated text.
@@ -215,8 +218,9 @@ class MultimodalLargeLanguageModel {
     required String inputText,
     required String audioPath,
     void Function(String delta)? onDelta,
-    void Function()? onModelLoaded,
+    void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
+    void Function()? onModelLoaded,
   }) =>
       _chatWithMediaIsolate(
         model: model,
@@ -228,8 +232,9 @@ class MultimodalLargeLanguageModel {
         mediaPath: audioPath,
         mediaType: 'audio',
         onDelta: onDelta,
-        onModelLoaded: onModelLoaded,
+        onMetrics: onMetrics,
         onModelLoading: onModelLoading,
+        onModelLoaded: onModelLoaded,
       );
 
   Future<String> _chatWithMediaIsolate({
@@ -242,29 +247,32 @@ class MultimodalLargeLanguageModel {
     required String mediaPath,
     required String mediaType,
     void Function(String delta)? onDelta,
-    void Function()? onModelLoaded,
+    void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
-  }) async {
-    return _worker.run({
-      'modelPath': model.path,
-      'mmprojPath': mmproj.path,
-      'backend': backend,
-      'nCtx': nCtx,
-      'systemPrompt': systemPrompt,
-      'inputText': inputText,
-      'mediaPath': mediaPath,
-      'mediaType': mediaType,
-    }, onEvent: (event) {
-      switch (event['type']) {
-        case 'loading':
-          onModelLoading?.call();
-        case 'ready':
-          onModelLoaded?.call();
-        case 'delta':
-          onDelta?.call(event['text'] as String);
-      }
-    });
-  }
+    void Function()? onModelLoaded,
+  }) =>
+      _worker.run({
+        'modelPath': model.path,
+        'mmprojPath': mmproj.path,
+        'backend': backend,
+        'nCtx': nCtx,
+        'systemPrompt': systemPrompt,
+        'inputText': inputText,
+        'mediaPath': mediaPath,
+        'mediaType': mediaType,
+      }, onEvent: (event) {
+        switch (event['type']) {
+          case 'loading':
+            onModelLoading?.call();
+          case 'ready':
+            onModelLoaded?.call();
+          case 'delta':
+            onDelta?.call(event['text'] as String);
+          case 'metrics':
+            onMetrics?.call((event['ttftMs'] as num?)?.toDouble(),
+                (event['tps'] as num?)?.toDouble());
+        }
+      });
 
   /// Releases the persistent worker, stopping generation between tokens.
   void cancel() => _worker.cancel();

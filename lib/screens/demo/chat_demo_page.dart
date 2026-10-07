@@ -2,6 +2,7 @@ import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/large_language_model.dart';
 import '../../model_catalog.dart';
 import 'demo_session.dart';
@@ -167,7 +168,8 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
       safeSetState(() {
         _messages.add({'role': 'assistant', 'content': ''});
       });
-      int startTime = DateTime.now().millisecondsSinceEpoch;
+      final processingWatch = Stopwatch()..start();
+      final timing = GenerationMetrics()..start();
       // Accumulate tokens and repaint at most once per frame instead of
       // rebuilding the screen per token.
       final reply = StringBuffer();
@@ -180,6 +182,7 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
       }
 
       await _llm!.chatStream(text, (delta) {
+        timing.recordToken();
         reply.write(delta);
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         if (nowMs - lastPaintMs >= 33) {
@@ -190,8 +193,9 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
       if (mounted) {
         paintReply();
       }
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      _session.showResult("processing time : ${endTime - startTime} ms");
+      _session.showResult(
+          'processing time : ${processingWatch.elapsedMilliseconds} ms\n'
+          'TPS: ${formatTps(timing.tps)} tokens/s');
     } catch (e) {
       _session.showError("Inference Error: $e");
     } finally {

@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:ailia_llm/ailia_llm_model.dart';
 
+import 'generation_metrics.dart';
 import 'media_prompt.dart';
 import 'qnn_model.dart';
 
@@ -149,28 +150,36 @@ void runMultimodalWorker(SendPort events,
       }
       events.send({'type': 'ready'});
       // Each run supplies a fresh prompt; prior media and answers are omitted.
-      final systemPrompt = request['systemPrompt'] as String;
+      final timing = GenerationMetrics()..start();
       // Replace the previous media prompt with valid text before the next input.
       // Empty prompts are rejected by the native SDK; do not generate here.
       model.setPrompt([
         {'role': 'user', 'content': '.'},
       ]);
-      model.setPrompt([
-        if (systemPrompt.isNotEmpty)
-          {'role': 'system', 'content': systemPrompt},
-        mediaPromptMessage(request['inputText'] as String,
-            request['mediaPath'] as String, mediaType),
-      ]);
+      model.setPrompt(mediaPromptMessages(
+        systemPrompt: request['systemPrompt'] as String,
+        inputText: request['inputText'] as String,
+        mediaPath: request['mediaPath'] as String,
+        mediaType: mediaType,
+      ));
       final text = StringBuffer();
       await Future<void>.delayed(Duration.zero);
       while (!closing) {
         final delta = model.generate();
         if (delta == null) break;
+        timing.recordToken();
         text.write(delta);
         events.send({'type': 'delta', 'text': delta});
         await Future<void>.delayed(Duration.zero);
       }
-      if (!closing) events.send({'type': 'done', 'text': text.toString()});
+      if (!closing) {
+        events.send({
+          'type': 'metrics',
+          'ttftMs': timing.ttftMs,
+          'tps': timing.tps,
+        });
+        events.send({'type': 'done', 'text': text.toString()});
+      }
     } catch (error) {
       // A failed native operation must not leave a cached, unusable model.
       loaded = null;

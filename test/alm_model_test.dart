@@ -40,6 +40,18 @@ void main() {
     expect(() => mediaPromptMessage('', '', 'video'), throwsArgumentError);
   });
 
+  test('ALM sends the entered query without a system prompt', () {
+    final messages = mediaPromptMessages(
+      systemPrompt: '',
+      inputText: '話者は何人ですか？',
+      mediaPath: '/recording.wav',
+      mediaType: 'audio',
+    );
+    expect(messages, hasLength(1));
+    expect(messages.single['role'], 'user');
+    expect(messages.single['content'], '話者は何人ですか？ <__media__>');
+  });
+
   test('E4B selects its GGUF or sc8380xp binary and rejects QCS6490 HTP', () {
     expect(LargeLanguageModel().getModelList('gemma4-e4b', 'CPU'),
         ['gemma', 'gemma-4-E4B-it-Q4_K_M.gguf']);

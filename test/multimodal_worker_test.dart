@@ -72,7 +72,7 @@ Map<String, dynamic> request({String media = 'image', String path = 'first'}) =>
       'mmprojPath': 'projector.gguf',
       'backend': 'CPU',
       'nCtx': 8192,
-      'systemPrompt': 'Describe',
+      'systemPrompt': '',
       'inputText': 'query',
       'mediaPath': path,
       'mediaType': media,
@@ -90,7 +90,7 @@ void main() {
             await worker.run(request(media: media), onEvent: (event) {
               events.add(event['type'] as String);
             }),
-            '1:2:first');
+            '1:1:first');
         expect(events.where((e) => e == 'textPromptSet' || e == 'promptSet'),
             ['textPromptSet', 'promptSet']);
       }
@@ -103,17 +103,20 @@ void main() {
     addTearDown(worker.cancel);
     final events = <String>[];
     void onEvent(Map event) => events.add(event['type'] as String);
-    expect(await worker.run(request(), onEvent: onEvent), '1:2:first');
+    expect(await worker.run(request(), onEvent: onEvent), '1:1:first');
     expect(events.where((e) => e == 'loading'), hasLength(1));
+    expect(events.where((e) => e == 'ready'), hasLength(1));
+    expect(events.where((e) => e == 'metrics'), hasLength(1));
     events.clear();
     expect(await worker.run(request(path: 'second'), onEvent: onEvent),
-        '1:2:second');
+        '1:1:second');
     expect(
         await worker.run(request(media: 'audio', path: 'audio'),
             onEvent: onEvent),
-        '1:2:audio');
+        '1:1:audio');
     expect(events, isNot(contains('loading')));
     expect(events.where((e) => e == 'ready'), hasLength(2));
+    expect(events.where((e) => e == 'metrics'), hasLength(2));
   });
 
   test('reloads for every model configuration change', () async {

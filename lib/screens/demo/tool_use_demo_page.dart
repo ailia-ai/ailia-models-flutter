@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
 import '../../large_language_model/qnn_runtime.dart';
+import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/tool_use_model.dart';
 import '../../large_language_model/tool_use_worker.dart';
 import '../../model_catalog.dart';
@@ -30,6 +31,8 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
   bool _cancelled = false;
   double? _temperature;
   int _lastPaint = 0;
+  int _decodeTokens = 0;
+  double _decodeSeconds = 0;
 
   @override
   void dispose() {
@@ -115,6 +118,10 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
         });
         _temperature = event['temperature'] as double?;
         _session.setStatus('Running tool...');
+      case 'metrics':
+        _decodeTokens += event['decodeTokens'] as int;
+        _decodeSeconds += event['decodeSeconds'] as double;
+        return;
     }
     _paint();
   }
@@ -129,6 +136,8 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
     });
     _session.errorText = null;
     _session.showResult('');
+    _decodeTokens = 0;
+    _decodeSeconds = 0;
     final stopwatch = Stopwatch()..start();
     try {
       await _ensureModel(backend);
@@ -138,8 +147,10 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
       _paint();
       await _worker!.chat(text, _thinking, _event);
       _session.clearStatus();
+      final tps = _decodeSeconds > 0 ? _decodeTokens / _decodeSeconds : null;
       _session
-          .showResult('processing time : ${stopwatch.elapsedMilliseconds} ms');
+          .showResult('processing time : ${stopwatch.elapsedMilliseconds} ms\n'
+              'TPS: ${formatTps(tps)} tokens/s');
     } catch (error) {
       if (_assistant != null) {
         _messages.remove(_assistant);

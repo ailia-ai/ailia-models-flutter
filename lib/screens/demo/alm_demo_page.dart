@@ -5,10 +5,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:wav/wav.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
+import '../../large_language_model/recorded_wav.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
 import 'demo_session.dart';
@@ -129,13 +130,9 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
       await _amplitude?.cancel();
       _amplitude = null;
       if (path == null) throw StateError('No microphone recording was saved.');
-      final wav = await Wav.readFile(path);
-      if (wav.channels.isEmpty || wav.channels.first.isEmpty) {
-        throw StateError('The microphone recording is empty.');
-      }
+      final seconds = await prepareRecordedWav(File(path));
       if (!mounted) return;
       safeSetState(() => _audio = File(path));
-      final seconds = wav.channels.first.length / wav.samplesPerSecond;
       _session.showResult(
           'Recorded ${seconds.toStringAsFixed(1)} seconds. Press Analyze audio.');
     } catch (e) {
@@ -178,13 +175,15 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
         final watch = Stopwatch()..start();
         final reply = StringBuffer();
         int lastPaint = 0;
+        double? ttftMs;
+        double? tps;
         await _alm.chatWithAudioIsolate(
             model: modelFile,
             mmproj: mmprojFile,
             backend: backend,
             nCtx: MultimodalLargeLanguageModel.contextSize(
                 widget.model.id, modelFile.path, backend),
-            systemPrompt: 'あなたは音声を理解する親切なアシスタントです。',
+            systemPrompt: '',
             inputText: query,
             audioPath: audio.path,
             onModelLoading: () => _session.showResult('Loading audio model...'),
@@ -195,10 +194,16 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
                 lastPaint = watch.elapsedMilliseconds;
                 _session.showResult(reply.toString());
               }
+            },
+            onMetrics: (firstMs, tokensPerSecond) {
+              ttftMs = firstMs;
+              tps = tokensPerSecond;
             });
         if (mounted) {
           _session.showResult(
-              '$reply\nprocessing time : ${watch.elapsedMilliseconds} ms');
+              '$reply\nprocessing time : ${watch.elapsedMilliseconds} ms\n'
+              'TTFT: ${formatTtft(ttftMs)}\n'
+              'TPS: ${formatTps(tps)} tokens/s');
         }
       } finally {
         if (!mounted) {
