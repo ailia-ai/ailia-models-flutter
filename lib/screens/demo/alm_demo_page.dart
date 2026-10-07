@@ -8,6 +8,7 @@ import 'package:record/record.dart';
 import 'package:wav/wav.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
@@ -178,6 +179,8 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
         final watch = Stopwatch()..start();
         final reply = StringBuffer();
         int lastPaint = 0;
+        double? ttftMs;
+        double? tps;
         await _alm.chatWithAudioIsolate(
             model: modelFile,
             mmproj: mmprojFile,
@@ -192,10 +195,16 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
                 lastPaint = watch.elapsedMilliseconds;
                 _session.showResult(reply.toString());
               }
+            },
+            onMetrics: (firstMs, tokensPerSecond) {
+              ttftMs = firstMs;
+              tps = tokensPerSecond;
             });
         if (mounted) {
           _session.showResult(
-              '$reply\nprocessing time : ${watch.elapsedMilliseconds} ms');
+              '$reply\nprocessing time : ${watch.elapsedMilliseconds} ms\n'
+              'TTFT: ${formatTtft(ttftMs)}\n'
+              'TPS: ${formatTps(tps)} tokens/s');
         }
       } finally {
         _alm.cancel();

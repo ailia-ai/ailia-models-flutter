@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
@@ -162,6 +163,8 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       // panel, repainting at most once per frame.
       final reply = StringBuffer();
       int lastPaintMs = 0;
+      double? ttftMs;
+      double? tps;
       String outputText = await _vlm.chatWithImageIsolate(
         model: modelFile,
         mmproj: mmprojFile,
@@ -178,10 +181,16 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
             _session.showResult(reply.toString());
           }
         },
+        onMetrics: (firstMs, tokensPerSecond) {
+          ttftMs = firstMs;
+          tps = tokensPerSecond;
+        },
       );
 
       int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText = "processing time : ${endTime - startTime} ms";
+      String profileText = 'processing time : ${endTime - startTime} ms\n'
+          'TTFT: ${formatTtft(ttftMs)}\n'
+          'TPS: ${formatTps(tps)} tokens/s';
 
       _session.showResult("$outputText\n$profileText");
     } catch (e) {

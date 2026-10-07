@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:ailia_llm/ailia_llm_model.dart';
 
+import 'generation_metrics.dart';
+
 /// Gemma 4 tool-use conversation, following AiliaToolUseSample.kt.
 /// Only the simulated air conditioner below can be changed by this demo.
 class ToolUseModel {
@@ -86,6 +88,7 @@ class ToolUseModel {
       for (var turn = 0; turn < maxTurns; turn++) {
         _checkCancelled();
         onEvent({'type': 'turnStart'});
+        final timing = GenerationMetrics()..start();
         _model.setPromptJson(_history);
         if (_model.contextFull()) throw StateError('Model context is full');
         var done = false;
@@ -97,6 +100,7 @@ class ToolUseModel {
             done = true;
             break;
           }
+          timing.recordToken();
           if (delta.isNotEmpty) onEvent({'type': 'delta', 'text': delta});
           // Receive cancellation between native generation calls in the worker.
           await Future<void>.delayed(Duration.zero);
@@ -105,6 +109,11 @@ class ToolUseModel {
         if (!done) {
           throw StateError('Generation exceeded $maxGenerationSteps steps');
         }
+        onEvent({
+          'type': 'metrics',
+          'decodeTokens': timing.decodeTokens,
+          'decodeSeconds': timing.decodeSeconds,
+        });
         final response = _model.getResponseJson();
         if (response['role'] != 'assistant') {
           throw const FormatException('Expected an assistant response');

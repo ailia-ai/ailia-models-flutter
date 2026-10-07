@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:http/http.dart' as http;
+import 'generation_metrics.dart';
 import 'multimodal_model_files.dart';
 import 'media_prompt.dart';
 
@@ -44,6 +45,7 @@ void _mediaIsolateFunc(_MediaRequest request) {
       throw Exception('$capability capabilities not available');
     }
 
+    final timing = GenerationMetrics()..start();
     llm.setPrompt(mediaPromptMessages(
       systemPrompt: request.systemPrompt,
       inputText: request.inputText,
@@ -55,10 +57,15 @@ void _mediaIsolateFunc(_MediaRequest request) {
     while (true) {
       final delta = llm.generate();
       if (delta == null) break;
+      timing.recordToken();
       text.write(delta);
       request.sendPort.send({'delta': delta});
     }
-    request.sendPort.send({'done': text.toString()});
+    request.sendPort.send({
+      'done': text.toString(),
+      'ttftMs': timing.ttftMs,
+      'tps': timing.tps,
+    });
   } catch (e) {
     request.sendPort.send({'error': '$e'});
   } finally {
@@ -236,6 +243,7 @@ class MultimodalLargeLanguageModel {
     required String inputText,
     required String imagePath,
     void Function(String delta)? onDelta,
+    void Function(double? ttftMs, double? tps)? onMetrics,
   }) =>
       _chatWithMediaIsolate(
         model: model,
@@ -247,6 +255,7 @@ class MultimodalLargeLanguageModel {
         mediaPath: imagePath,
         mediaType: 'image',
         onDelta: onDelta,
+        onMetrics: onMetrics,
       );
 
   /// Runs ALM inference outside the UI isolate and streams generated text.
@@ -259,6 +268,7 @@ class MultimodalLargeLanguageModel {
     required String inputText,
     required String audioPath,
     void Function(String delta)? onDelta,
+    void Function(double? ttftMs, double? tps)? onMetrics,
   }) =>
       _chatWithMediaIsolate(
         model: model,
@@ -270,6 +280,7 @@ class MultimodalLargeLanguageModel {
         mediaPath: audioPath,
         mediaType: 'audio',
         onDelta: onDelta,
+        onMetrics: onMetrics,
       );
 
   Future<String> _chatWithMediaIsolate({
@@ -282,6 +293,7 @@ class MultimodalLargeLanguageModel {
     required String mediaPath,
     required String mediaType,
     void Function(String delta)? onDelta,
+    void Function(double? ttftMs, double? tps)? onMetrics,
   }) async {
     final receivePort = ReceivePort();
     _receivePort = receivePort;
@@ -313,6 +325,8 @@ class MultimodalLargeLanguageModel {
           text.write(delta);
           onDelta?.call(delta);
         } else if (map.containsKey('done')) {
+          onMetrics?.call((map['ttftMs'] as num?)?.toDouble(),
+              (map['tps'] as num?)?.toDouble());
           return map['done'] as String;
         } else if (map.containsKey('error')) {
           throw Exception(map['error']);
