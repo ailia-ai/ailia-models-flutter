@@ -1,82 +1,13 @@
 import 'dart:io';
-import 'dart:isolate';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:http/http.dart' as http;
-import 'generation_metrics.dart';
 import 'multimodal_model_files.dart';
 import 'media_prompt.dart';
-
-class _MediaRequest {
-  final SendPort sendPort;
-  final String modelPath;
-  final String mmprojPath;
-  final String backend;
-  final int nCtx;
-  final String systemPrompt;
-  final String inputText;
-  final String mediaPath;
-  final String mediaType;
-
-  const _MediaRequest({
-    required this.sendPort,
-    required this.modelPath,
-    required this.mmprojPath,
-    required this.backend,
-    required this.nCtx,
-    required this.systemPrompt,
-    required this.inputText,
-    required this.mediaPath,
-    required this.mediaType,
-  });
-}
-
-void _mediaIsolateFunc(_MediaRequest request) {
-  final llm = AiliaLLMModel();
-  try {
-    final backends = AiliaLLMModel.getBackendList();
-    if (!backends.contains(request.backend)) {
-      throw Exception(
-          "Backend '${request.backend}' not available. Available: $backends");
-    }
-    llm.open(request.modelPath, request.nCtx, backend: request.backend);
-    llm.openMultimodalProjectorFile(request.mmprojPath);
-    final capability = request.mediaType == 'audio' ? 'audio' : 'vision';
-    if (llm.getMultimodalCapabilities()[capability] != true) {
-      throw Exception('$capability capabilities not available');
-    }
-
-    final timing = GenerationMetrics()..start();
-    llm.setPrompt(mediaPromptMessages(
-      systemPrompt: request.systemPrompt,
-      inputText: request.inputText,
-      mediaPath: request.mediaPath,
-      mediaType: request.mediaType,
-    ));
-
-    final text = StringBuffer();
-    while (true) {
-      final delta = llm.generate();
-      if (delta == null) break;
-      timing.recordToken();
-      text.write(delta);
-      request.sendPort.send({'delta': delta});
-    }
-    request.sendPort.send({
-      'done': text.toString(),
-      'ttftMs': timing.ttftMs,
-      'tps': timing.tps,
-    });
-  } catch (e) {
-    request.sendPort.send({'error': '$e'});
-  } finally {
-    llm.close();
-  }
-}
+import 'multimodal_worker.dart';
 
 class MultimodalLargeLanguageModel {
   final AiliaLLMModel _ailiaLLMModel = AiliaLLMModel();
-  Isolate? _isolate;
-  ReceivePort? _receivePort;
+  final MultimodalWorker _worker = MultimodalWorker();
 
   static int contextSize(String type) =>
       type == 'gemma4-e2b-vlm' ? 16384 : 8192;
@@ -211,6 +142,11 @@ class MultimodalLargeLanguageModel {
     }
 
     messages.add(mediaPromptMessage(inputText, path, mediaType));
+    // Replace the previous media prompt with valid text before the next input.
+    // Empty prompts are rejected by the native SDK; do not generate here.
+    _ailiaLLMModel.setPrompt([
+      {'role': 'user', 'content': '.'},
+    ]);
     _ailiaLLMModel.setPrompt(messages);
   }
 
@@ -244,6 +180,8 @@ class MultimodalLargeLanguageModel {
     required String imagePath,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
+    void Function()? onModelLoading,
+    void Function()? onModelLoaded,
   }) =>
       _chatWithMediaIsolate(
         model: model,
@@ -256,6 +194,8 @@ class MultimodalLargeLanguageModel {
         mediaType: 'image',
         onDelta: onDelta,
         onMetrics: onMetrics,
+        onModelLoading: onModelLoading,
+        onModelLoaded: onModelLoaded,
       );
 
   /// Runs ALM inference outside the UI isolate and streams generated text.
@@ -269,6 +209,8 @@ class MultimodalLargeLanguageModel {
     required String audioPath,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
+    void Function()? onModelLoading,
+    void Function()? onModelLoaded,
   }) =>
       _chatWithMediaIsolate(
         model: model,
@@ -281,6 +223,8 @@ class MultimodalLargeLanguageModel {
         mediaType: 'audio',
         onDelta: onDelta,
         onMetrics: onMetrics,
+        onModelLoading: onModelLoading,
+        onModelLoaded: onModelLoaded,
       );
 
   Future<String> _chatWithMediaIsolate({
@@ -294,58 +238,34 @@ class MultimodalLargeLanguageModel {
     required String mediaType,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
-  }) async {
-    final receivePort = ReceivePort();
-    _receivePort = receivePort;
-    _isolate = await Isolate.spawn(
-      _mediaIsolateFunc,
-      _MediaRequest(
-        sendPort: receivePort.sendPort,
-        modelPath: model.path,
-        mmprojPath: mmproj.path,
-        backend: backend,
-        nCtx: nCtx,
-        systemPrompt: systemPrompt,
-        inputText: inputText,
-        mediaPath: mediaPath,
-        mediaType: mediaType,
-      ),
-      onExit: receivePort.sendPort,
-    );
-
-    final text = StringBuffer();
-    try {
-      await for (final message in receivePort) {
-        if (message == null) {
-          throw Exception('Inference isolate exited unexpectedly');
+    void Function()? onModelLoading,
+    void Function()? onModelLoaded,
+  }) =>
+      _worker.run({
+        'modelPath': model.path,
+        'mmprojPath': mmproj.path,
+        'backend': backend,
+        'nCtx': nCtx,
+        'systemPrompt': systemPrompt,
+        'inputText': inputText,
+        'mediaPath': mediaPath,
+        'mediaType': mediaType,
+      }, onEvent: (event) {
+        switch (event['type']) {
+          case 'loading':
+            onModelLoading?.call();
+          case 'ready':
+            onModelLoaded?.call();
+          case 'delta':
+            onDelta?.call(event['text'] as String);
+          case 'metrics':
+            onMetrics?.call((event['ttftMs'] as num?)?.toDouble(),
+                (event['tps'] as num?)?.toDouble());
         }
-        final map = message as Map;
-        if (map.containsKey('delta')) {
-          final delta = map['delta'] as String;
-          text.write(delta);
-          onDelta?.call(delta);
-        } else if (map.containsKey('done')) {
-          onMetrics?.call((map['ttftMs'] as num?)?.toDouble(),
-              (map['tps'] as num?)?.toDouble());
-          return map['done'] as String;
-        } else if (map.containsKey('error')) {
-          throw Exception(map['error']);
-        }
-      }
-      return text.toString();
-    } finally {
-      receivePort.close();
-      _receivePort = null;
-      _isolate = null;
-    }
-  }
+      });
 
-  void cancel() {
-    _isolate?.kill(priority: Isolate.immediate);
-    _isolate = null;
-    _receivePort?.close();
-    _receivePort = null;
-  }
+  /// Releases the persistent worker, stopping generation between tokens.
+  void cancel() => _worker.cancel();
 
   void close() {
     cancel();
