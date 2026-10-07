@@ -44,13 +44,12 @@ void _mediaIsolateFunc(_MediaRequest request) {
       throw Exception('$capability capabilities not available');
     }
 
-    final messages = <Map<String, dynamic>>[];
-    if (request.systemPrompt.isNotEmpty) {
-      messages.add({'role': 'system', 'content': request.systemPrompt});
-    }
-    messages.add(mediaPromptMessage(
-        request.inputText, request.mediaPath, request.mediaType));
-    llm.setPrompt(messages);
+    llm.setPrompt(mediaPromptMessages(
+      systemPrompt: request.systemPrompt,
+      inputText: request.inputText,
+      mediaPath: request.mediaPath,
+      mediaType: request.mediaType,
+    ));
 
     final text = StringBuffer();
     while (true) {

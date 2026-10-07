@@ -33,6 +33,19 @@ void main() {
     ]);
   });
 
+  test('ALM keeps the entered query alongside its role prompt', () {
+    final messages = mediaPromptMessages(
+      systemPrompt: 'あなたは音声を理解する親切なアシスタントです。',
+      inputText: '話者は何人ですか？',
+      mediaPath: '/recording.wav',
+      mediaType: 'audio',
+    );
+    expect(messages, hasLength(2));
+    expect(messages.first['role'], 'system');
+    expect(messages.last['role'], 'user');
+    expect(messages.last['content'], '話者は何人ですか？ <__media__>');
+  });
+
   test('E4B uses the chat UI and downloads its GGUF', () {
     final model = modelCatalog.singleWhere((m) => m.id == 'gemma4-e4b');
     expect(model.isChat, isTrue);
