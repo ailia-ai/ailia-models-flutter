@@ -183,7 +183,7 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
             mmproj: mmprojFile,
             backend: backend,
             nCtx: MultimodalLargeLanguageModel.contextSize(widget.model.id),
-            systemPrompt: 'あなたは音声を理解する親切なアシスタントです。',
+            systemPrompt: '',
             inputText: query,
             audioPath: audio.path,
             onDelta: (delta) {

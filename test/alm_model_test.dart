@@ -33,17 +33,16 @@ void main() {
     ]);
   });
 
-  test('ALM keeps the entered query alongside its role prompt', () {
+  test('ALM sends the entered query without a system prompt', () {
     final messages = mediaPromptMessages(
-      systemPrompt: 'あなたは音声を理解する親切なアシスタントです。',
+      systemPrompt: '',
       inputText: '話者は何人ですか？',
       mediaPath: '/recording.wav',
       mediaType: 'audio',
     );
-    expect(messages, hasLength(2));
-    expect(messages.first['role'], 'system');
-    expect(messages.last['role'], 'user');
-    expect(messages.last['content'], '話者は何人ですか？ <__media__>');
+    expect(messages, hasLength(1));
+    expect(messages.single['role'], 'user');
+    expect(messages.single['content'], '話者は何人ですか？ <__media__>');
   });
 
   test('E4B uses the chat UI and downloads its GGUF', () {
