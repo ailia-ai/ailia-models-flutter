@@ -152,7 +152,10 @@ class MultimodalLargeLanguageModel {
     }
 
     messages.add(mediaPromptMessage(inputText, path, mediaType));
-    _ailiaLLMModel.setPrompt([]);
+    // Empty prompts are rejected by the native SDK. Replace media with text first.
+    _ailiaLLMModel.setPrompt([
+      {'role': 'user', 'content': '.'},
+    ]);
     _ailiaLLMModel.setPrompt(messages);
   }
 

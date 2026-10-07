@@ -11,7 +11,7 @@ class FakeMediaModel extends AiliaLLMModel {
   int opens = 0;
   String? next;
   bool endless = false;
-  bool cacheCleared = false;
+  bool textPromptSet = false;
 
   @override
   void open(String path, int nCtx, {String backend = 'CPU'}) {
@@ -27,15 +27,19 @@ class FakeMediaModel extends AiliaLLMModel {
 
   @override
   void setPrompt(List<Map<String, dynamic>> messages) {
-    if (messages.isEmpty) {
-      cacheCleared = true;
+    if (messages.isEmpty) throw StateError('Empty prompts are unsupported');
+    if (messages.length == 1 &&
+        messages.single['role'] == 'user' &&
+        messages.single['content'] == '.' &&
+        !messages.single.containsKey('media_data')) {
+      textPromptSet = true;
       next = null;
       endless = false;
-      events.send({'type': 'cacheCleared'});
+      events.send({'type': 'textPromptSet'});
       return;
     }
-    if (!cacheCleared) throw StateError('KV cache was not cleared');
-    cacheCleared = false;
+    if (!textPromptSet) throw StateError('Text prompt was not set first');
+    textPromptSet = false;
     events.send({'type': 'promptSet'});
     if (messages.last['content'] == 'fail <__media__>') {
       throw StateError('Failed prompt');
@@ -47,6 +51,7 @@ class FakeMediaModel extends AiliaLLMModel {
 
   @override
   String? generate() {
+    if (textPromptSet) throw StateError('Do not generate from the text reset');
     if (endless) return 'token';
     final result = next;
     next = null;
@@ -75,7 +80,7 @@ Map<String, dynamic> request({String media = 'image', String path = 'first'}) =>
 
 void main() {
   for (final media in ['image', 'audio']) {
-    test('$media clears KV cache before every prompt for the same media path',
+    test('$media sets valid text before every media prompt for the same path',
         () async {
       final worker = MultimodalWorker(entryPoint: fakeWorker);
       addTearDown(worker.cancel);
@@ -86,8 +91,8 @@ void main() {
               events.add(event['type'] as String);
             }),
             '1:2:first');
-        expect(events.where((e) => e == 'cacheCleared' || e == 'promptSet'),
-            ['cacheCleared', 'promptSet']);
+        expect(events.where((e) => e == 'textPromptSet' || e == 'promptSet'),
+            ['textPromptSet', 'promptSet']);
       }
     });
   }
