@@ -145,11 +145,12 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
   Future<void> _performInference(
       String imagePath, List<String> modelList, String selectedBackend) async {
     try {
-      _session.showResult("Loading model with selected backend...");
+      _session.showResult('Preparing image...');
 
       final type = widget.model.id;
       File modelFile = File(await getModelPath(modelList[1]));
       File mmprojFile = File(await getModelPath(modelList[3]));
+      if (!mounted) return;
 
       String inputText = _queryController.text.trim();
 
@@ -168,6 +169,9 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
         systemPrompt: "画像を2-3文で簡潔に説明してください。",
         inputText: inputText,
         imagePath: imagePath,
+        onModelLoading: () =>
+            _session.showResult('Loading model with selected backend...'),
+        onModelLoaded: () => _session.showResult('Image Processing...'),
         onDelta: (delta) {
           reply.write(delta);
           final nowMs = DateTime.now().millisecondsSinceEpoch;

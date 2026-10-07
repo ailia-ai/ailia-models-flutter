@@ -169,12 +169,12 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
       try {
         final files = _alm.getModelList(widget.model.id, backend);
         if (!await _session.downloadModelList(files) || !mounted) return;
-        _session.setStatus('Loading audio model...');
+        _session.setStatus('Preparing audio...');
         final modelFile = File(await getModelPath(files[1]));
         final mmprojFile = File(await getModelPath(files[3]));
         if (!mounted) return;
         _session.clearStatus();
-        _session.showResult('');
+        _session.showResult('Preparing audio...');
         final watch = Stopwatch()..start();
         final reply = StringBuffer();
         int lastPaint = 0;
@@ -187,6 +187,8 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
             systemPrompt: 'あなたは音声を理解する親切なアシスタントです。',
             inputText: query,
             audioPath: audio.path,
+            onModelLoading: () => _session.showResult('Loading audio model...'),
+            onModelLoaded: () => _session.showResult('Audio Processing...'),
             onDelta: (delta) {
               reply.write(delta);
               if (watch.elapsedMilliseconds - lastPaint >= 33) {
@@ -199,8 +201,10 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
               '$reply\nprocessing time : ${watch.elapsedMilliseconds} ms');
         }
       } finally {
-        _alm.cancel();
-        if (!mounted) await _deleteRecordings();
+        if (!mounted) {
+          _alm.cancel();
+          await _deleteRecordings();
+        }
       }
     });
     if (!mounted) await _deleteRecordings();

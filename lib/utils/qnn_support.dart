@@ -46,5 +46,10 @@ bool showQnnMark({
   required bool qnnSupported,
   required bool usesLlmBackend,
   required String? soc,
+  Set<String>? supportedQnnSocs,
 }) =>
-    qnnSupported && (usesLlmBackend || isQnnFp16SupportedSoc(soc));
+    qnnSupported &&
+    (soc == null ||
+        supportedQnnSocs == null ||
+        supportedQnnSocs.contains(soc.trim().toLowerCase())) &&
+    (usesLlmBackend || isQnnFp16SupportedSoc(soc));

@@ -204,6 +204,7 @@ class ModelCard extends StatelessWidget {
                     qnnSupported: model.qnnSupported,
                     usesLlmBackend: model.usesLlmBackend,
                     soc: qnnSocName,
+                    supportedQnnSocs: model.supportedQnnSocs,
                   )) ...[
                     Tooltip(
                       message: 'Runs on the QNN (NPU) backend',

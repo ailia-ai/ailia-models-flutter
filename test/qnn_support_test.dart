@@ -43,13 +43,15 @@ void main() {
           showQnnMark(
               qnnSupported: model.qnnSupported,
               usesLlmBackend: model.usesLlmBackend,
+              supportedQnnSocs: model.supportedQnnSocs,
               soc: 'qcs6490'),
-          model.qnnSupported && model.usesLlmBackend,
+          model.qnnSupported && model.usesLlmBackend && model.id != 'gemma4-e4b',
           reason: model.id);
       expect(
           showQnnMark(
               qnnSupported: model.qnnSupported,
               usesLlmBackend: model.usesLlmBackend,
+              supportedQnnSocs: model.supportedQnnSocs,
               soc: 'sc8380xp'),
           model.qnnSupported,
           reason: model.id);
