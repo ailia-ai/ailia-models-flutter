@@ -2,6 +2,7 @@ import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/qnn_runtime.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/tool_use_model.dart';
 import '../../large_language_model/tool_use_worker.dart';
@@ -57,11 +58,13 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
       _messages.clear();
       _temperature = null;
     }
+    final files =
+        ToolUseModel.modelFiles(backend, soc: availableWindowsQnnSoc());
     await AiliaLicense.checkAndDownloadLicense();
     if (!mounted || _cancelled) return;
     final file = await _session.downloadFile(
-        'https://storage.googleapis.com/ailia-models/gemma/${ToolUseModel.modelFile}',
-        ToolUseModel.modelFile);
+        'https://storage.googleapis.com/ailia-models/${files[0]}/${files[1]}',
+        files[1]);
     if (!mounted || _cancelled) return;
     if (file == null) throw StateError('Model download failed');
     _session.setStatus('Loading model...');

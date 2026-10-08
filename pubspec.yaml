@@ -35,7 +35,7 @@ dependencies:
   ailia:
     git:
       url: https://github.com/ailia-ai/ailia-sdk-flutter.git
-      ref: main
+      ref: qnn
 
   ailia_audio:
     git:
@@ -50,7 +50,7 @@ dependencies:
   ailia_speech:
     git:
       url: https://github.com/ailia-ai/ailia-speech-flutter.git
-      ref: main
+      ref: set_static_input_length
 
   ailia_voice:
     git:
@@ -60,7 +60,7 @@ dependencies:
   ailia_llm:
     git:
       url: https://github.com/ailia-ai/ailia-llm-flutter.git
-      ref: v1.5.0
+      ref: v1.5.0.1_beta2
 
   ailia_tracker:
     git:

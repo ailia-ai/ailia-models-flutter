@@ -5,6 +5,7 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 
 import 'generation_metrics.dart';
 import 'media_prompt.dart';
+import 'qnn_model.dart';
 
 /// Keeps the native model and projector alive across independent media queries.
 class MultimodalWorker {
@@ -132,6 +133,8 @@ void runMultimodalWorker(SendPort events,
         model.close();
         loaded = null;
         events.send({'type': 'loading'});
+        llmContextLength(key.$1, key.$3);
+        llmContextLength(key.$2, key.$3);
         final backends = (backendList ?? AiliaLLMModel.getBackendList)();
         if (!backends.contains(key.$3)) {
           throw StateError('Backend ${key.$3} not available: $backends');

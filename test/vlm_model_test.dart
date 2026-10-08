@@ -26,23 +26,71 @@ void main() {
       'gemma',
       'gemma-3-4b-it-GGUF_mmproj-model-f16.gguf',
     ]);
-    expect(model.getModelList('gemma4-e2b-vlm'), [
+    expect(model.getModelList('gemma4-e2b-vlm', 'CPU'), [
       'gemma',
       'gemma-4-E2B-it-Q4_K_M.gguf',
       'gemma',
       'gemma-4-E2B-it-mmproj-F16.gguf',
     ]);
-    expect(() => multimodalModelFiles('unknown'), throwsUnsupportedError);
+    expect(
+        () => multimodalModelFiles('unknown', 'CPU'), throwsUnsupportedError);
   });
 
-  test('image prompts retain their image dimensions', () {
+  test('multimodal context size follows model format and backend', () {
     expect(
-        mediaPromptMessage('Describe', '/image.png', 'image')['media_data'], [
+        MultimodalLargeLanguageModel.contextSize(
+            'gemma4-e2b-vlm', 'gemma4.gguf', 'CPU'),
+        16384);
+    expect(
+        MultimodalLargeLanguageModel.contextSize(
+            'gemma4-e2b-vlm', 'gemma4.qnn', 'HTP'),
+        0);
+    expect(
+        () => MultimodalLargeLanguageModel.contextSize(
+            'gemma4-e2b-vlm', 'gemma4.gguf', 'HTP'),
+        throwsArgumentError);
+  });
+
+  test('HTP uses matching text and projector packages for each SoC', () {
+    for (final soc in ['sc8380xp', 'qcs6490']) {
+      expect(
+          multimodalModelFiles(
+              'gemma4-e2b-vlm', 'HTP (QNN): Qualcomm Hexagon HTP',
+              soc: soc),
+          [
+            'gemma/qnn/v1.5.0',
+            'gemma4-e2b-$soc.qnn',
+            'gemma/qnn/v1.5.0',
+            'gemma4-e2b-$soc-mmproj.qnn',
+          ]);
+    }
+    expect(
+        () => multimodalModelFiles('gemma3-multimodal', 'HTP', soc: 'sc8380xp'),
+        throwsUnsupportedError);
+    expect(() => multimodalModelFiles('gemma4-e2b-vlm', 'HTP', soc: 'sm7635'),
+        throwsUnsupportedError);
+  });
+
+  test('rejects a mismatched projector before opening the native model', () {
+    final model = MultimodalLargeLanguageModel();
+    expect(
+        () => model.openWithBackendName(
+            File('gemma4.qnn'), File('mmproj.gguf'), 'HTP'),
+        throwsArgumentError);
+    expect(
+        () => model.openWithBackendName(
+            File('gemma4.gguf'), File('mmproj.qnn'), 'CPU'),
+        throwsArgumentError);
+  });
+
+  test('image prompt carries image dimensions and rejects video', () {
+    final prompt = mediaPromptMessage('Describe', '/image.png', 'image');
+    expect(prompt['media_data'], [
       {
         'media_type': 'image',
         'file_path': '/image.png',
         'width': 0,
-        'height': 0
+        'height': 0,
       }
     ]);
   });

@@ -13,7 +13,7 @@ import 'camera_input.dart';
 import 'demo_session.dart';
 import 'still_image.dart';
 
-/// Multimodal (image + text) LLM demo: describes the sample image or a
+/// VLM (image + text) demo: describes the sample image or a
 /// still frame captured from the camera.
 class VlmDemoPage extends StatefulWidget {
   const VlmDemoPage({super.key, required this.model});
@@ -108,11 +108,12 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
   }
 
   Future<void> _runMultimodal(String query) async {
-    List<String> modelList = _vlm.getModelList(widget.model.id);
-    if (!await _session.downloadModelList(modelList) || !mounted) {
-      return;
-    }
     try {
+      final backend = BackendState.instance.selectedLlmBackend.value;
+      final modelList = _vlm.getModelList(widget.model.id, backend);
+      if (!await _session.downloadModelList(modelList) || !mounted) {
+        return;
+      }
       String imagePath;
       final capturedPath = _camera.capturedPath;
       if (capturedPath != null) {
@@ -139,25 +140,23 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       await Future.delayed(const Duration(milliseconds: 100));
 
       if (!mounted) return;
-      await _performInference(imagePath, modelList, query);
+      await _performInference(imagePath, modelList, backend, query);
     } catch (e) {
       _session.showError(e);
     }
   }
 
-  Future<void> _performInference(
-      String imagePath, List<String> modelList, String query) async {
+  Future<void> _performInference(String imagePath, List<String> modelList,
+      String selectedBackend, String query) async {
     try {
       _session.showResult('Preparing image...');
 
       final type = widget.model.id;
       File modelFile = File(await getModelPath(modelList[1]));
       File mmprojFile = File(await getModelPath(modelList[3]));
+      if (!mounted) return;
 
       int startTime = DateTime.now().millisecondsSinceEpoch;
-
-      // ailia LLM has its own backend list; use the LLM selection.
-      String selectedBackend = BackendState.instance.selectedLlmBackend.value;
 
       // Generation runs in an isolate; stream tokens into the result
       // panel, repainting at most once per frame.
@@ -169,7 +168,8 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
         model: modelFile,
         mmproj: mmprojFile,
         backend: selectedBackend,
-        nCtx: MultimodalLargeLanguageModel.contextSize(type),
+        nCtx: MultimodalLargeLanguageModel.contextSize(
+            type, modelFile.path, selectedBackend),
         systemPrompt: '',
         inputText: query,
         imagePath: imagePath,

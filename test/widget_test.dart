@@ -45,4 +45,25 @@ void main() {
     expect(card.model.usesLlmBackend, isTrue);
     expect(tester.takeException(), isNull);
   });
+  for (final filename in [
+    'gemma-4-E2B-it-Q4_K_M.gguf',
+    'gemma4-e2b-sc8380xp.qnn',
+    'gemma4-e2b-qcs6490.qnn',
+  ]) {
+    testWidgets('Tool Use shares the downloaded marker for $filename',
+        (tester) async {
+      final directory =
+          Directory('${documents.path}/ailia MODELS flutter/models')
+            ..createSync(recursive: true);
+      File('${directory.path}/$filename').writeAsBytesSync([]);
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Gemma 4 E2B Tool Use'), 400,
+          scrollable: find.byType(Scrollable));
+      final card = tester.widget<ModelCard>(find.ancestor(
+          of: find.text('Gemma 4 E2B Tool Use'),
+          matching: find.byType(ModelCard)));
+      expect(card.downloaded, isTrue);
+    });
+  }
 }

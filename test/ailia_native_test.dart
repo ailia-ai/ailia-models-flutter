@@ -24,6 +24,9 @@ import 'package:ailia_models_flutter/diffusion/sdxl/sdxl.dart';
 import 'package:ailia_models_flutter/diffusion/sdxl/sdxl_worker.dart';
 import 'package:ailia_models_flutter/backend_state.dart';
 import 'package:ailia_models_flutter/large_language_model/large_language_model.dart';
+import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
+import 'package:ailia_models_flutter/large_language_model/multimodal_large_language_model.dart';
+import 'package:ailia_models_flutter/utils/qnn_device.dart';
 import 'package:image/image.dart' as img;
 
 String? _findBundleDir() {
@@ -105,6 +108,40 @@ void main() {
     expect(backendList, isNotEmpty);
     // ignore: avoid_print
     print('ailia_llm backends: $backendList');
+  });
+
+  test('HTP selects the context binary for the detected SoC', () {
+    final backends = AiliaLLMModel.getBackendList().where(isLlmQnnBackend);
+    if (backends.isEmpty) {
+      markTestSkipped('HTP backend is unavailable on this device.');
+      return;
+    }
+    final soc = AiliaLLMModel.getQNNModelName();
+    expect(qnnSocName, soc.trim().toLowerCase());
+    expect(windowsQnnSocs, contains(soc));
+    BackendState.instance.applyModelDefault(preferQnn: true, forLlm: true);
+    expect(isLlmQnnBackend(BackendState.instance.selectedLlmBackend.value),
+        isTrue);
+    final backend = backends.first;
+    final files = LargeLanguageModel().getModelList('gemma4-e2b', backend);
+    expect(files, ['gemma/qnn/v1.5.0', 'gemma4-e2b-$soc.qnn']);
+    expect(llmContextLength(files[1], backend), 0);
+    final vlmFiles =
+        MultimodalLargeLanguageModel().getModelList('gemma4-e2b-vlm', backend);
+    expect(vlmFiles, [
+      ...files,
+      'gemma/qnn/v1.5.0',
+      'gemma4-e2b-$soc-mmproj.qnn',
+    ]);
+    expect(
+        MultimodalLargeLanguageModel().getModelList('gemma4-e2b-alm', backend),
+        vlmFiles);
+    if (soc == 'sc8380xp') {
+      expect(LargeLanguageModel().getModelList('gemma4-e4b', backend),
+          ['gemma/qnn/v1.5.0', 'gemma4-e4b-sc8380xp.qnn']);
+    }
+    // ignore: avoid_print
+    print('HTP context binary: ${files[0]}/${files[1]}');
   });
 
   test('sdxl txt2img produces an image', () async {
@@ -250,16 +287,11 @@ void main() {
     }
   }, timeout: const Timeout(Duration(minutes: 60)));
 
-  test('LLM selector exposes GGUF CPU/GPU backends', () {
+  test('LLM selector exposes CPU and a selected backend', () {
     final state = BackendState.instance;
     final backends = state.llmBackendList;
     expect(backends, isNotEmpty);
     expect(backends, contains('CPU'));
-    expect(
-        backends.any((name) =>
-            name.toUpperCase().contains('HTP') ||
-            name.toUpperCase().contains('QNN')),
-        isFalse);
     expect(backends, contains(state.selectedLlmBackend.value));
   });
 

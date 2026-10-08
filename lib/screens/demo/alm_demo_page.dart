@@ -164,7 +164,7 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
     await _session.run(() async {
       if (!mounted) return;
       try {
-        final files = _alm.getModelList(widget.model.id);
+        final files = _alm.getModelList(widget.model.id, backend);
         if (!await _session.downloadModelList(files) || !mounted) return;
         _session.setStatus('Preparing audio...');
         final modelFile = File(await getModelPath(files[1]));
@@ -181,7 +181,8 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
             model: modelFile,
             mmproj: mmprojFile,
             backend: backend,
-            nCtx: MultimodalLargeLanguageModel.contextSize(widget.model.id),
+            nCtx: MultimodalLargeLanguageModel.contextSize(
+                widget.model.id, modelFile.path, backend),
             systemPrompt: '',
             inputText: query,
             audioPath: audio.path,

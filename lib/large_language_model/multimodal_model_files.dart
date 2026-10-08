@@ -1,4 +1,13 @@
-List<String> multimodalModelFiles(String type) {
+import 'qnn_model.dart';
+
+List<String> multimodalModelFiles(String type, String backend, {String? soc}) {
+  if (isLlmQnnBackend(backend)) {
+    if (type != 'gemma4-e2b-vlm' && type != 'gemma4-e2b-alm') {
+      throw UnsupportedError('HTP supports only Gemma 4 E2B VLM / ALM.');
+    }
+    final textFiles = qnnTextModelFiles('gemma4-e2b', soc ?? '');
+    return [...textFiles, textFiles[0], 'gemma4-e2b-$soc-mmproj.qnn'];
+  }
   switch (type) {
     case 'gemma3-multimodal':
       return [

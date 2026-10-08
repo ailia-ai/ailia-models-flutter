@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:ailia_models_flutter/large_language_model/tool_use_model.dart';
+import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
 import 'package:ailia_models_flutter/model_catalog.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,6 +32,26 @@ class FakeModel extends AiliaLLMModel {
   bool failParsing = false;
   bool? thinking;
   int _step = 0;
+  String? openedPath;
+  String? openedBackend;
+  int? openedContext;
+  List<Map<String, dynamic>>? configuredTools;
+
+  @override
+  void open(String modelPath, int nCtx, {String backend = ''}) {
+    openedPath = modelPath;
+    openedContext = nCtx;
+    openedBackend = backend;
+  }
+
+  @override
+  void setSamplingParams(int topK, double topP, double temperature, int seed) {}
+
+  @override
+  void setTools(List<Map<String, dynamic>>? tools) => configuredTools = tools;
+
+  @override
+  void close() {}
 
   @override
   void setThinking(bool enable) => thinking = enable;
@@ -61,6 +82,47 @@ void main() {
     expect(model.category, 'Tool Use');
     expect(model.usesLlmBackend, isTrue);
     expect(model.isChat, isFalse);
+    expect(model.qnnSupported, isTrue);
+    expect(model.supportedQnnSocs, windowsQnnSocs);
+  });
+
+  test('Tool Use selects the text-only package for each QNN SoC', () {
+    for (final soc in windowsQnnSocs) {
+      expect(
+          ToolUseModel.modelFiles('HTP (QNN): Qualcomm Hexagon HTP', soc: soc),
+          ['gemma/qnn/v1.5.0', 'gemma4-e2b-$soc.qnn']);
+    }
+    for (final backend in ['CPU', 'Metal: Apple GPU', 'Vulkan', 'OpenCL']) {
+      expect(ToolUseModel.modelFiles(backend, soc: 'qcs6490'),
+          ['gemma', ToolUseModel.modelFile]);
+    }
+    expect(() => ToolUseModel.modelFiles('HTP'), throwsUnsupportedError);
+    expect(() => ToolUseModel.modelFiles('HTP', soc: 'sm7635'),
+        throwsUnsupportedError);
+  });
+
+  test('HTP opens compiled context while CPU/GPU retains 8192 tokens', () {
+    for (final backend in ['HTP (QNN): Qualcomm Hexagon HTP', 'CPU', 'Metal']) {
+      final native = FakeModel([]);
+      final model = ToolUseModel(model: native, backendList: () => [backend]);
+      final files = ToolUseModel.modelFiles(backend, soc: 'sc8380xp');
+      model.open(files[1], backend);
+      expect(native.openedPath, files[1]);
+      expect(native.openedBackend, backend);
+      expect(native.openedContext, isLlmQnnBackend(backend) ? 0 : 8192);
+      expect(native.configuredTools, ToolUseModel.tools);
+    }
+  });
+
+  test('mismatched packages and missing backends fail before native open', () {
+    final native = FakeModel([]);
+    final model =
+        ToolUseModel(model: native, backendList: () => ['HTP', 'CPU']);
+    expect(() => model.open('model.gguf', 'HTP'), throwsArgumentError);
+    expect(() => model.open('model.qnn', 'CPU'), throwsArgumentError);
+    expect(() => model.open('model.gguf', 'Metal'), throwsStateError);
+    expect(native.openedPath, isNull);
+    expect(native.configuredTools, isNull);
   });
 
   test('structured calls and string tool results round-trip with IDs intact',

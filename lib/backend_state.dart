@@ -1,7 +1,12 @@
-import 'package:ailia/ailia.dart' show AILIA_ENVIRONMENT_TYPE_BLAS;
+import 'package:ailia/ailia.dart'
+    show AILIA_ENVIRONMENT_TYPE_BLAS, AILIA_ENVIRONMENT_TYPE_CPU;
 import 'package:ailia/ailia_model.dart';
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:flutter/material.dart';
+import 'large_language_model/qnn_model.dart';
+import 'large_language_model/qnn_runtime.dart';
+import 'utils/qnn_device.dart';
+import 'utils/qnn_support.dart';
 
 /// Holds the backend selections shared by every screen. The selection
 /// lives in the top bar on both the home screen and the demo screens.
@@ -18,20 +23,35 @@ class BackendState {
 
   List<String> _llmBackendList = [];
   final ValueNotifier<String> selectedLlmBackend = ValueNotifier<String>('');
+  bool _llmSupportsQnn = false;
 
   /// The BLAS-accelerated CPU backend (CPU-AppleAccelerate on macOS,
   /// CPU-IntelMKL on Windows, CPU-OpenBlas on Android, ...).
   static bool _isBlas(AiliaEnvironment e) =>
       e.type == AILIA_ENVIRONMENT_TYPE_BLAS;
 
+  static bool _isCpu(AiliaEnvironment e) =>
+      e.type == AILIA_ENVIRONMENT_TYPE_CPU;
+
+  /// QNN provides CPU / GPU / HTP variants, but only HTP (the NPU) is
+  /// meaningful for the demos; hide the QNN CPU and GPU variants from
+  /// the selector.
+  static bool _isSelectable(AiliaEnvironment e) {
+    return isSdkQnnEnvironmentSelectable(e.name, qnnSocName);
+  }
+
   List<AiliaEnvironment> get envList {
     if (_envList.isEmpty) {
-      _envList = AiliaModel.getEnvironmentList();
+      _envList = AiliaModel.getEnvironmentList().where(_isSelectable).toList();
       if (_envList.isNotEmpty) {
         // Default to the BLAS backend when available; it is much faster
-        // than the plain CPU environment.
-        selectedEnvId.value =
-            _envList.firstWhere(_isBlas, orElse: () => _envList.first).id;
+        // than the plain CPU environment. The QNN build has no BLAS, so
+        // fall back to the plain CPU environment rather than QNN-HTP.
+        selectedEnvId.value = _envList
+            .firstWhere(_isBlas,
+                orElse: () =>
+                    _envList.firstWhere(_isCpu, orElse: () => _envList.first))
+            .id;
       }
     }
     return _envList;
@@ -42,21 +62,59 @@ class BackendState {
         orElse: () => envList.first,
       );
 
-  List<String> get llmBackendList {
-    if (_llmBackendList.isEmpty) {
-      // This app opens GGUF models on CPU/GPU. The dependency also exposes
-      // context-binary backends, which cannot open the files used here.
-      _llmBackendList = AiliaLLMModel.getBackendList()
-          .where((name) =>
-              !name.toUpperCase().contains('HTP') &&
-              !name.toUpperCase().contains('QNN'))
-          .toList();
-      if (_llmBackendList.isNotEmpty &&
-          !_llmBackendList.contains(selectedLlmBackend.value)) {
-        selectedLlmBackend.value = _llmBackendList.first;
+  /// Applies the default backend when a demo opens: the QNN (HTP)
+  /// environment for QNN-ready models when present, otherwise the CPU
+  /// backend (BLAS preferred). The user can still change the backend
+  /// from the top bar afterwards.
+  void applyModelDefault(
+      {required bool preferQnn,
+      bool forLlm = false,
+      Set<String>? supportedQnnSocs}) {
+    if (forLlm) {
+      final soc = preferQnn ? availableWindowsQnnSoc() : null;
+      _llmSupportsQnn = soc != null &&
+          (supportedQnnSocs == null || supportedQnnSocs.contains(soc));
+      final backends = llmBackendList;
+      if (backends.isNotEmpty) {
+        selectedLlmBackend.value = backends.firstWhere(
+          (name) => _llmSupportsQnn && isLlmQnnBackend(name),
+          orElse: () => backends.firstWhere(
+            (name) => name.toUpperCase() == 'CPU',
+            orElse: () => backends.first,
+          ),
+        );
+      }
+      return;
+    }
+    final list = envList;
+    if (list.isEmpty) {
+      return;
+    }
+    AiliaEnvironment? pick;
+    if (preferQnn) {
+      for (final env in list) {
+        if (env.name.toUpperCase().contains('QNN')) {
+          pick = env;
+          break;
+        }
       }
     }
-    return _llmBackendList;
+    pick ??= list.firstWhere(_isBlas,
+        orElse: () => list.firstWhere(_isCpu, orElse: () => list.first));
+    selectedEnvId.value = pick.id;
+  }
+
+  List<String> get llmBackendList {
+    if (_llmBackendList.isEmpty) {
+      _llmBackendList = AiliaLLMModel.getBackendList();
+    }
+    final list = _llmBackendList
+        .where((name) => _llmSupportsQnn || !isLlmQnnBackend(name))
+        .toList();
+    if (list.isNotEmpty && !list.contains(selectedLlmBackend.value)) {
+      selectedLlmBackend.value = list.first;
+    }
+    return list;
   }
 }
 

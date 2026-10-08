@@ -58,27 +58,27 @@ flutter run
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [gemma2](/lib/large_language_model/) | [gemma-2-2b](https://huggingface.co/google/gemma-2-2b) | llama.cpp | 1.1.0 and later| |
-| [gemma4-e2b](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | 1.4.2 and later | |
-| [gemma4-e4b](/lib/large_language_model/) | [gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it) | llama.cpp | 1.5.0 and later | |
+| [gemma4-e2b](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | 1.4.2 and later | |
+| [gemma4-e4b](/lib/large_language_model/) | [gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it) | llama.cpp / QNN | 1.5.0 and later | |
 
 ### VLM
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [gemma3-multimodal](/lib/large_language_model/) | [gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) | llama.cpp | | |
-| [gemma4-e2b-vlm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | | |
+| [gemma4-e2b-vlm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | | |
 
 ### ALM
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
-| [gemma4-e2b-alm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | | |
+| [gemma4-e2b-alm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | | |
 
 ### Tool Use
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
-| [gemma4-e2b-tool-use](/lib/large_language_model/tool_use_model.dart) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | 1.5.0 and later | |
+| [gemma4-e2b-tool-use](/lib/large_language_model/tool_use_model.dart) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | 1.5.0 and later | |
 
 ### Natural Language Processing
 
@@ -119,6 +119,58 @@ flutter run
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [tacotron2](/lib/text_to_speech/) | [Tacotron2](https://github.com/NVIDIA/tacotron2) | Pytorch | 1.2.15 and later | [JP](https://tech.ailia.ai/tacotron2-%E6%B3%A2%E5%BD%A2%E5%A4%89%E6%8F%9B%E3%82%92ai%E3%81%A7%E8%A1%8C%E3%81%86%E9%AB%98%E5%93%81%E8%B3%AA%E3%81%AA%E9%9F%B3%E5%A3%B0%E5%90%88%E6%88%90%E3%83%A2%E3%83%87%E3%83%AB-bc592217a399) |
 | [gpt-sovits](/lib/text_to_speech/) | [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | Pytorch | 1.4.0 and later | [JP](https://tech.ailia.ai/gpt-sovits-%E3%83%95%E3%82%A1%E3%82%A4%E3%83%B3%E3%83%81%E3%83%A5%E3%83%BC%E3%83%8B%E3%83%B3%E3%82%B0%E3%81%A7%E3%81%8D%E3%82%8B0%E3%82%B7%E3%83%A7%E3%83%83%E3%83%88%E3%81%AE%E9%9F%B3%E5%A3%B0%E5%90%88%E6%88%90%E3%83%A2%E3%83%87%E3%83%AB-2212eeb5ad20) |
+
+## QNN Setup
+
+The ailia SDK QNN selector and model-list badges are disabled on SoCs without
+HTP FP16 support (including QCS6490). The per-SoC policy follows
+[ailia-models-kotlin PR #33](https://github.com/ailia-ai/ailia-models-kotlin/pull/33)
+and QAIRT 2.47. Unknown SoCs retain the existing behavior. This restriction
+does not apply to ailia LLM: LLM, VLM, ALM and Tool Use keep their QNN support.
+
+### Windows ARM64 LLM
+
+Gemma 4 E2B uses the NPU by default when the Windows ARM64 process can
+detect `sc8380xp` or `qcs6490` through `AiliaLLMModel.getQNNModelName()` and
+the LLM `HTP` backend is available. Selecting `HTP` downloads the matching
+`gemma4-e2b-<soc>.qnn` from `gemma/qnn/v1.5.0` in the ailia model storage,
+caches it in the normal model directory, and opens it with `n_ctx=0`
+(the package's compiled 8192-token context). Selecting CPU/GPU downloads
+and opens the usual GGUF. Gemma 2 and Gemma 3 do not offer QNN.
+
+Gemma 4 E2B Tool Use shares the text-chat model cache and follows the same
+CPU/GPU or HTP selection. On HTP it uses the detected SoC's `.qnn` package
+with `n_ctx=0`; tool definitions and structured JSON history use the same
+SDK APIs as CPU/GPU. No multimodal projector is required.
+
+Gemma 4 E2B VLM and ALM additionally download the matching
+`gemma4-e2b-<soc>-mmproj.qnn` projector when using HTP.
+
+Gemma 4 E4B text chat uses `gemma-4-E4B-it-Q4_K_M.gguf` on CPU/GPU or
+`gemma4-e4b-sc8380xp.qnn` on HTP. E4B's HTP backend is hidden on QCS6490,
+which supports E2B only.
+
+Use a QNN-enabled ailia LLM 1.5.0 Windows ARM64 runtime, QAIRT
+**2.47.0.260601**, and the Qualcomm NPU driver. The pinned Flutter binding
+(`v1.5.0`) provides the SoC API and bundles the LLM/ggml DLLs including
+`ailia_llm_qnn.dll`. This is separate from the ailia SDK's QNN plugin.
+Prepare a folder with the QAIRT `lib/aarch64-windows-msvc` QNN DLLs and
+the matching `lib/hexagon-v73/unsigned` (sc8380xp) or
+`lib/hexagon-v68/unsigned` (qcs6490) `.so` and `.cat` files. Set the folder
+before building, or place these files beside the built executable:
+
+```powershell
+$env:AILIA_LLM_QNN_RUNTIME_DIR = 'C:\QAIRT\windows-arm64-v73'
+flutter build windows
+```
+
+Only use the package and Hexagon runtime for the actual SoC. QCS6490 is
+experimental and requires device verification. See the
+[official QNN guide](https://docs.ailia.ai/llm/qnn.html) for runtime setup
+and download details.
+
+Build with an ARM64 Flutter SDK on Windows ARM64; an x64 process cannot
+load the ARM64 QNN plugin.
 
 ## Import ailia SDK
 

@@ -3,7 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../model_catalog.dart';
+import '../large_language_model/qnn_model.dart';
 import '../utils/download_model.dart';
+import '../utils/qnn_device.dart';
+import '../utils/qnn_support.dart';
 import 'demo_screen.dart';
 
 /// Representative file per model, used to show a "downloaded" badge on
@@ -85,6 +88,20 @@ class _HomeScreenState extends State<HomeScreen> {
       if (File('$base${entry.value}').existsSync()) {
         downloaded.add(entry.key);
       }
+    }
+    if (windowsQnnSocs
+        .any((soc) => File('${base}gemma4-e2b-$soc.qnn').existsSync())) {
+      downloaded.add('gemma4-e2b');
+      downloaded.add('gemma4-e2b-tool-use');
+    }
+    if (windowsQnnSocs.any((soc) =>
+        File('${base}gemma4-e2b-$soc.qnn').existsSync() &&
+        File('${base}gemma4-e2b-$soc-mmproj.qnn').existsSync())) {
+      downloaded.add('gemma4-e2b-vlm');
+      downloaded.add('gemma4-e2b-alm');
+    }
+    if (File('${base}gemma4-e4b-sc8380xp.qnn').existsSync()) {
+      downloaded.add('gemma4-e4b');
     }
     if (mounted) {
       setState(() {
@@ -183,6 +200,36 @@ class ModelCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
+                  if (showQnnMark(
+                    qnnSupported: model.qnnSupported,
+                    usesLlmBackend: model.usesLlmBackend,
+                    soc: qnnSocName,
+                    supportedQnnSocs: model.supportedQnnSocs,
+                  )) ...[
+                    Tooltip(
+                      message: 'Runs on the QNN (NPU) backend',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: Theme.of(context).colorScheme.tertiary),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'QNN',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.tertiary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   if (downloaded)
                     Tooltip(
                       message: 'Model downloaded',
