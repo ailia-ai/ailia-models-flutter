@@ -93,11 +93,16 @@ void main() {
       for (final (type, mtp, followUp) in runs) {
         String? error = 'not loaded';
         double? tps;
+        double? ttft;
         final modelFile = File(path('gemma-4-E2B-it-Q4_K_M.gguf'));
         final mmproj = File(path('gemma-4-E2B-it-mmproj-F16.gguf'));
         final mtpFile = mtp ? File(assistant(type)) : null;
         void loaded(String? e) => error = e;
-        void metrics(double? _, double? t) => tps = t;
+        void metrics(double? first, double? t) {
+          ttft = first;
+          tps = t;
+        }
+
         final isAudio = type == 'gemma4-e2b-alm';
         final text = isAudio
             ? await model.chatWithAudioIsolate(
@@ -124,7 +129,7 @@ void main() {
                 onMetrics: metrics);
         // ignore: avoid_print
         print('[$type mtp=$mtp ${followUp ?? 'media'}] '
-            '${tps?.toStringAsFixed(1)} tok/s '
+            'TTFT ${ttft?.round()} ms, ${tps?.toStringAsFixed(1)} tok/s '
             '${mtpStatusText(requested: mtp, error: error)}\n$text');
         expect(error, isNull);
         if (followUp == null) {
