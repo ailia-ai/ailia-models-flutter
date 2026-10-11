@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ailia_llm/ailia_llm_model.dart';
 
+import 'mtp.dart';
 import 'qnn_model.dart';
 import 'generation_metrics.dart';
 
@@ -22,6 +23,10 @@ class ToolUseModel {
     }
     return ['gemma', modelFile];
   }
+
+  /// MTP assistant matching [modelFiles].
+  static List<String> mtpFiles(String backend, {String? soc}) =>
+      mtpAssistantFiles('gemma4-e2b-tool-use', backend, soc: soc);
 
   static const defaultPrompt = 'エアコンの温度を20度にしてください';
   static const toolName = 'set_air_conditioner_temperature';
@@ -49,13 +54,18 @@ class ToolUseModel {
   bool _busy = false;
   bool _cancelled = false;
 
-  void open(String path, String backend) {
+  /// Error from opening the MTP assistant; null when MTP is active or
+  /// was not requested.
+  String? mtpError;
+
+  void open(String path, String backend, {String? mtpPath}) {
     final nCtx = llmContextLength(path, backend);
     if (!_backendList().contains(backend)) {
       throw StateError('LLM backend unavailable: $backend');
     }
     try {
       _model.open(path, nCtx, backend: backend);
+      mtpError = openMtpAssistant(_model, mtpPath);
       _model.setSamplingParams(40, 0.9, 0.0, 1234);
       _model.setTools(tools);
     } catch (_) {

@@ -124,7 +124,7 @@ void main() {
         isTrue);
     final backend = backends.first;
     final files = LargeLanguageModel().getModelList('gemma4-e2b', backend);
-    expect(files, ['gemma/qnn/v1.5.0', 'gemma4-e2b-$soc.qnn']);
+    expect(files, qnnTextModelFiles('gemma4-e2b', soc));
     expect(llmContextLength(files[1], backend), 0);
     final vlmFiles =
         MultimodalLargeLanguageModel().getModelList('gemma4-e2b-vlm', backend);
@@ -138,7 +138,7 @@ void main() {
         vlmFiles);
     if (soc == 'sc8380xp') {
       expect(LargeLanguageModel().getModelList('gemma4-e4b', backend),
-          ['gemma/qnn/v1.5.0', 'gemma4-e4b-sc8380xp.qnn']);
+          ['gemma/qnn/v1.5.1', 'gemma4-e4b-sc8380xp-fp16-mtp.qnn']);
     }
     // ignore: avoid_print
     print('HTP context binary: ${files[0]}/${files[1]}');

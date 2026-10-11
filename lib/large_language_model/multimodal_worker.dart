@@ -5,9 +5,10 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 
 import 'generation_metrics.dart';
 import 'media_prompt.dart';
+import 'mtp.dart';
 import 'qnn_model.dart';
 
-/// Keeps the native model and projector alive across independent media queries.
+/// Keeps the native model, projector and conversation alive across turns.
 class MultimodalWorker {
   MultimodalWorker({this.entryPoint = runMultimodalWorker});
 
@@ -99,7 +100,11 @@ void runMultimodalWorker(SendPort events,
     List<String> Function()? backendList}) {
   final commands = ReceivePort();
   final model = (modelFactory ?? AiliaLLMModel.new)();
-  (String, String, String, int)? loaded;
+  (String, String, String, int, String)? loaded;
+  String? mtpError;
+  // Conversation so far (user turns with optional media, assistant replies),
+  // resent on every turn so the SDK can keep the shared KV cache prefix.
+  final history = <Map<String, dynamic>>[];
   var busy = false;
   var closing = false;
 
@@ -128,10 +133,15 @@ void runMultimodalWorker(SendPort events,
         request['mmprojPath'] as String,
         request['backend'] as String,
         request['nCtx'] as int,
+        // Empty when MTP is off; the assistant cannot be detached, so a
+        // change reopens the model.
+        request['mtpPath'] as String? ?? '',
       );
       if (loaded != key) {
         model.close();
         loaded = null;
+        // A reopened model starts a new conversation.
+        history.clear();
         events.send({'type': 'loading'});
         llmContextLength(key.$1, key.$3);
         llmContextLength(key.$2, key.$3);
@@ -140,28 +150,42 @@ void runMultimodalWorker(SendPort events,
           throw StateError('Backend ${key.$3} not available: $backends');
         }
         model.open(key.$1, key.$4, backend: key.$3);
+        // The assistant must be opened before the projector.
+        mtpError = openMtpAssistant(model, key.$5);
         model.openMultimodalProjectorFile(key.$2);
         loaded = key;
       }
-      final mediaType = request['mediaType'] as String;
-      final capability = mediaType == 'audio' ? 'audio' : 'vision';
-      if (model.getMultimodalCapabilities()[capability] != true) {
-        throw StateError('$capability capabilities not available');
+      // Text-only follow-up turns carry no media.
+      final mediaPath = request['mediaPath'] as String?;
+      final mediaType = request['mediaType'] as String?;
+      if (mediaPath != null) {
+        final capability = mediaType == 'audio' ? 'audio' : 'vision';
+        if (model.getMultimodalCapabilities()[capability] != true) {
+          throw StateError('$capability capabilities not available');
+        }
       }
-      events.send({'type': 'ready'});
-      // Each run supplies a fresh prompt; prior media and answers are omitted.
+      if (request['resetHistory'] == true || model.contextFull()) {
+        if (history.isNotEmpty) events.send({'type': 'historyReset'});
+        history.clear();
+      }
+      events.send({'type': 'ready', 'mtpError': mtpError});
       final timing = GenerationMetrics()..start();
-      // Replace the previous media prompt with valid text before the next input.
-      // Empty prompts are rejected by the native SDK; do not generate here.
-      model.setPrompt([
-        {'role': 'user', 'content': '.'},
-      ]);
-      model.setPrompt(mediaPromptMessages(
-        systemPrompt: request['systemPrompt'] as String,
-        inputText: request['inputText'] as String,
-        mediaPath: request['mediaPath'] as String,
-        mediaType: mediaType,
-      ));
+      final inputText = request['inputText'] as String;
+      final user = mediaPath == null
+          ? {'role': 'user', 'content': inputText}
+          : mediaPromptMessage(inputText, mediaPath, mediaType!);
+      final systemPrompt = request['systemPrompt'] as String;
+      history.add(user);
+      try {
+        model.setPrompt([
+          if (systemPrompt.isNotEmpty)
+            {'role': 'system', 'content': systemPrompt},
+          ...history,
+        ]);
+      } catch (_) {
+        history.removeLast();
+        rethrow;
+      }
       final text = StringBuffer();
       await Future<void>.delayed(Duration.zero);
       while (!closing) {
@@ -172,6 +196,7 @@ void runMultimodalWorker(SendPort events,
         events.send({'type': 'delta', 'text': delta});
         await Future<void>.delayed(Duration.zero);
       }
+      history.add({'role': 'assistant', 'content': text.toString()});
       if (!closing) {
         events.send({
           'type': 'metrics',
@@ -183,6 +208,7 @@ void runMultimodalWorker(SendPort events,
     } catch (error) {
       // A failed native operation must not leave a cached, unusable model.
       loaded = null;
+      history.clear();
       model.close();
       events.send({'type': 'error', 'message': '$error'});
     } finally {

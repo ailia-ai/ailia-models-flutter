@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ailia_models_flutter/large_language_model/multimodal_large_language_model.dart';
 import 'package:ailia_models_flutter/large_language_model/multimodal_model_files.dart';
 import 'package:ailia_models_flutter/large_language_model/media_prompt.dart';
+import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
 import 'package:ailia_models_flutter/model_catalog.dart';
 
 void main() {
@@ -58,8 +59,8 @@ void main() {
               'gemma4-e2b-vlm', 'HTP (QNN): Qualcomm Hexagon HTP',
               soc: soc),
           [
-            'gemma/qnn/v1.5.0',
-            'gemma4-e2b-$soc.qnn',
+            'gemma/qnn/v1.5.1',
+            'gemma4-e2b-$soc-${qnnPrecision(soc)}-mtp.qnn',
             'gemma/qnn/v1.5.0',
             'gemma4-e2b-$soc-mmproj.qnn',
           ]);

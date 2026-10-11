@@ -47,8 +47,8 @@ void main() {
   });
   for (final filename in [
     'gemma-4-E2B-it-Q4_K_M.gguf',
-    'gemma4-e2b-sc8380xp.qnn',
-    'gemma4-e2b-qcs6490.qnn',
+    'gemma4-e2b-sc8380xp-fp16-mtp.qnn',
+    'gemma4-e2b-qcs6490-int16-mtp.qnn',
   ]) {
     testWidgets('Tool Use shares the downloaded marker for $filename',
         (tester) async {

@@ -89,18 +89,19 @@ class _HomeScreenState extends State<HomeScreen> {
         downloaded.add(entry.key);
       }
     }
-    if (windowsQnnSocs
-        .any((soc) => File('${base}gemma4-e2b-$soc.qnn').existsSync())) {
+    bool qnnBody(String type, String soc) =>
+        File('$base${qnnTextModelFiles(type, soc)[1]}').existsSync();
+    if (windowsQnnSocs.any((soc) => qnnBody('gemma4-e2b', soc))) {
       downloaded.add('gemma4-e2b');
       downloaded.add('gemma4-e2b-tool-use');
     }
     if (windowsQnnSocs.any((soc) =>
-        File('${base}gemma4-e2b-$soc.qnn').existsSync() &&
+        qnnBody('gemma4-e2b', soc) &&
         File('${base}gemma4-e2b-$soc-mmproj.qnn').existsSync())) {
       downloaded.add('gemma4-e2b-vlm');
       downloaded.add('gemma4-e2b-alm');
     }
-    if (File('${base}gemma4-e4b-sc8380xp.qnn').existsSync()) {
+    if (qnnBody('gemma4-e4b', 'sc8380xp')) {
       downloaded.add('gemma4-e4b');
     }
     if (mounted) {

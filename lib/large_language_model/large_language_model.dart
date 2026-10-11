@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:ailia_llm/ailia_llm_model.dart';
+import 'mtp.dart';
 import 'qnn_model.dart';
 import 'qnn_runtime.dart';
 
@@ -80,9 +81,20 @@ class LargeLanguageModel {
     openWithBackendName(model, backend);
   }
 
+  /// [folder, file] of the MTP assistant for [type] on [backend].
+  List<String> getMtpAssistantFiles(String type, String backend) =>
+      mtpAssistantFiles(type, backend,
+          soc: isLlmQnnBackend(backend) ? availableWindowsQnnSoc() : null);
+
+  /// Error from opening the MTP assistant; null when MTP is active or
+  /// was not requested.
+  String? mtpError;
+
   /// Opens the model with an exact backend name taken from
   /// AiliaLLMModel.getBackendList() (e.g. CPU / Vulkan / OpenCL / Metal).
-  void openWithBackendName(File model, String backend) {
+  /// When [mtpAssistant] is given, MTP is enabled with
+  /// [mtpDraftTokens] draft tokens.
+  void openWithBackendName(File model, String backend, {File? mtpAssistant}) {
     final nCtx = llmContextLength(model.path, backend);
 
     List<String> backendList = AiliaLLMModel.getBackendList();
@@ -92,6 +104,7 @@ class LargeLanguageModel {
     }
 
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+    mtpError = openMtpAssistant(_ailiaLLMModel, mtpAssistant?.path);
   }
 
   void setSystemPrompt(String prompt) {

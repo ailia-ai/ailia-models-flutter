@@ -20,12 +20,22 @@ void main() {
         multimodalModelFiles('gemma4-e2b-vlm', 'CPU'));
     for (final soc in ['sc8380xp', 'qcs6490']) {
       expect(multimodalModelFiles('gemma4-e2b-alm', 'HTP', soc: soc), [
-        'gemma/qnn/v1.5.0',
-        'gemma4-e2b-$soc.qnn',
+        'gemma/qnn/v1.5.1',
+        'gemma4-e2b-$soc-${qnnPrecision(soc)}-mtp.qnn',
         'gemma/qnn/v1.5.0',
         'gemma4-e2b-$soc-mmproj.qnn',
       ]);
     }
+  });
+
+  test('ALM appends the MTP assistant only when requested', () {
+    expect(multimodalModelFiles('gemma4-e2b-alm', 'CPU', mtp: true), [
+      ...multimodalModelFiles('gemma4-e2b-alm', 'CPU'),
+      'gemma',
+      'mtp-gemma-4-E2B-it-Q4_0.gguf',
+    ]);
+    expect(multimodalModelFiles('gemma3-multimodal', 'CPU', mtp: true),
+        multimodalModelFiles('gemma3-multimodal', 'CPU'));
   });
 
   test('microphone WAV is sent as audio with the user query', () {
@@ -56,7 +66,7 @@ void main() {
     expect(LargeLanguageModel().getModelList('gemma4-e4b', 'CPU'),
         ['gemma', 'gemma-4-E4B-it-Q4_K_M.gguf']);
     expect(qnnTextModelFiles('gemma4-e4b', 'sc8380xp'),
-        ['gemma/qnn/v1.5.0', 'gemma4-e4b-sc8380xp.qnn']);
+        ['gemma/qnn/v1.5.1', 'gemma4-e4b-sc8380xp-fp16-mtp.qnn']);
     expect(() => qnnTextModelFiles('gemma4-e4b', 'qcs6490'),
         throwsUnsupportedError);
     final model = modelCatalog.singleWhere((m) => m.id == 'gemma4-e4b');

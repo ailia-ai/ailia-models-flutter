@@ -45,7 +45,9 @@ void main() {
               usesLlmBackend: model.usesLlmBackend,
               supportedQnnSocs: model.supportedQnnSocs,
               soc: 'qcs6490'),
-          model.qnnSupported && model.usesLlmBackend && model.id != 'gemma4-e4b',
+          model.qnnSupported &&
+              model.usesLlmBackend &&
+              model.id != 'gemma4-e4b',
           reason: model.id);
       expect(
           showQnnMark(
@@ -70,6 +72,6 @@ void main() {
   test('FP16 unsupported QCS6490 retains its LLM context binary', () {
     expect(isQnnFp16SupportedSoc('qcs6490'), isFalse);
     expect(qnnTextModelFiles('gemma4-e2b', 'qcs6490'),
-        ['gemma/qnn/v1.5.0', 'gemma4-e2b-qcs6490.qnn']);
+        ['gemma/qnn/v1.5.1', 'gemma4-e2b-qcs6490-int16-mtp.qnn']);
   });
 }

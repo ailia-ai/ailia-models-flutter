@@ -12,9 +12,9 @@ void main() {
   });
   test('selects a separate context binary for each supported Windows SoC', () {
     expect(qnnTextModelFiles('gemma4-e2b', 'sc8380xp'),
-        ['gemma/qnn/v1.5.0', 'gemma4-e2b-sc8380xp.qnn']);
+        ['gemma/qnn/v1.5.1', 'gemma4-e2b-sc8380xp-fp16-mtp.qnn']);
     expect(qnnTextModelFiles('gemma4-e2b', 'qcs6490'),
-        ['gemma/qnn/v1.5.0', 'gemma4-e2b-qcs6490.qnn']);
+        ['gemma/qnn/v1.5.1', 'gemma4-e2b-qcs6490-int16-mtp.qnn']);
   });
 
   test('rejects unsupported models and SoCs instead of substituting packages',
@@ -23,6 +23,24 @@ void main() {
         () => qnnTextModelFiles('gemma2', 'sc8380xp'), throwsUnsupportedError);
     expect(() => qnnTextModelFiles('gemma4-e2b', 'sm7635'),
         throwsUnsupportedError);
+  });
+
+  test('selects the MTP assistant matching the body', () {
+    expect(mtpAssistantFiles('gemma4-e2b', 'HTP', soc: 'sc8380xp'),
+        ['gemma/qnn/v1.5.1', 'gemma4-e2b-sc8380xp-fp16-mtp-assistant.qnn']);
+    expect(mtpAssistantFiles('gemma4-e2b-alm', 'HTP', soc: 'qcs6490'),
+        ['gemma/qnn/v1.5.1', 'gemma4-e2b-qcs6490-int16-mtp-assistant.qnn']);
+    expect(mtpAssistantFiles('gemma4-e4b', 'HTP', soc: 'sc8380xp'),
+        ['gemma/qnn/v1.5.1', 'gemma4-e4b-sc8380xp-fp16-mtp-assistant.qnn']);
+    expect(mtpAssistantFiles('gemma4-e2b-tool-use', 'CPU'),
+        ['gemma', 'mtp-gemma-4-E2B-it-Q4_0.gguf']);
+    expect(mtpAssistantFiles('gemma4-e4b', 'Vulkan'),
+        ['gemma', 'mtp-gemma-4-E4B-it-Q4_0.gguf']);
+    expect(() => mtpAssistantFiles('gemma2', 'CPU'), throwsUnsupportedError);
+    expect(() => mtpAssistantFiles('gemma4-e4b', 'HTP', soc: 'qcs6490'),
+        throwsUnsupportedError);
+    expect(supportsMtp('gemma3-multimodal'), isFalse);
+    expect(mtpDraftTokens, 3);
   });
 
   test('uses compiled context length for QNN and 8192 for GGUF', () {

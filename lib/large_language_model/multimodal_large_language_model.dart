@@ -18,10 +18,15 @@ class MultimodalLargeLanguageModel {
         : (type == 'gemma4-e2b-vlm' || type == 'gemma4-e2b-alm' ? 16384 : 8192);
   }
 
+  /// [folder, body, folder, mmproj], followed by [folder, assistant] when
+  /// [mtp] is requested for a model that supports it.
   List<String> getModelList(
-      [String type = 'gemma3-multimodal', String backend = '']) {
+      [String type = 'gemma3-multimodal',
+      String backend = '',
+      bool mtp = false]) {
     return multimodalModelFiles(type, backend,
-        soc: isLlmQnnBackend(backend) ? availableWindowsQnnSoc() : null);
+        soc: isLlmQnnBackend(backend) ? availableWindowsQnnSoc() : null,
+        mtp: mtp);
   }
 
   List<Map<String, dynamic>> messages =
@@ -152,11 +157,6 @@ class MultimodalLargeLanguageModel {
     }
 
     messages.add(mediaPromptMessage(inputText, path, mediaType));
-    // Replace the previous media prompt with valid text before the next input.
-    // Empty prompts are rejected by the native SDK; do not generate here.
-    _ailiaLLMModel.setPrompt([
-      {'role': 'user', 'content': '.'},
-    ]);
     _ailiaLLMModel.setPrompt(messages);
   }
 
@@ -179,7 +179,14 @@ class MultimodalLargeLanguageModel {
     return text;
   }
 
-  /// Runs VLM inference outside the UI isolate and streams generated text.
+  bool _resetHistory = false;
+
+  /// Starts a new conversation on the next turn, keeping the model loaded.
+  void clearHistory() => _resetHistory = true;
+
+  /// Runs one VLM chat turn outside the UI isolate and streams generated
+  /// text. Earlier turns stay in the conversation; [imagePath] is null for
+  /// a text-only follow-up question.
   Future<String> chatWithImageIsolate({
     required File model,
     required File mmproj,
@@ -187,15 +194,18 @@ class MultimodalLargeLanguageModel {
     required int nCtx,
     required String systemPrompt,
     required String inputText,
-    required String imagePath,
+    String? imagePath,
+    File? mtpAssistant,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
-    void Function()? onModelLoaded,
+    void Function(String? mtpError)? onModelLoaded,
+    void Function()? onHistoryReset,
   }) =>
       _chatWithMediaIsolate(
         model: model,
         mmproj: mmproj,
+        mtpAssistant: mtpAssistant,
         backend: backend,
         nCtx: nCtx,
         systemPrompt: systemPrompt,
@@ -206,9 +216,12 @@ class MultimodalLargeLanguageModel {
         onMetrics: onMetrics,
         onModelLoading: onModelLoading,
         onModelLoaded: onModelLoaded,
+        onHistoryReset: onHistoryReset,
       );
 
-  /// Runs ALM inference outside the UI isolate and streams generated text.
+  /// Runs one ALM chat turn outside the UI isolate and streams generated
+  /// text. Earlier turns stay in the conversation; [audioPath] is null for
+  /// a text-only follow-up question.
   Future<String> chatWithAudioIsolate({
     required File model,
     required File mmproj,
@@ -216,15 +229,18 @@ class MultimodalLargeLanguageModel {
     required int nCtx,
     required String systemPrompt,
     required String inputText,
-    required String audioPath,
+    String? audioPath,
+    File? mtpAssistant,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
-    void Function()? onModelLoaded,
+    void Function(String? mtpError)? onModelLoaded,
+    void Function()? onHistoryReset,
   }) =>
       _chatWithMediaIsolate(
         model: model,
         mmproj: mmproj,
+        mtpAssistant: mtpAssistant,
         backend: backend,
         nCtx: nCtx,
         systemPrompt: systemPrompt,
@@ -235,6 +251,7 @@ class MultimodalLargeLanguageModel {
         onMetrics: onMetrics,
         onModelLoading: onModelLoading,
         onModelLoaded: onModelLoaded,
+        onHistoryReset: onHistoryReset,
       );
 
   Future<String> _chatWithMediaIsolate({
@@ -244,35 +261,44 @@ class MultimodalLargeLanguageModel {
     required int nCtx,
     required String systemPrompt,
     required String inputText,
-    required String mediaPath,
+    required String? mediaPath,
     required String mediaType,
+    File? mtpAssistant,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
-    void Function()? onModelLoaded,
-  }) =>
-      _worker.run({
-        'modelPath': model.path,
-        'mmprojPath': mmproj.path,
-        'backend': backend,
-        'nCtx': nCtx,
-        'systemPrompt': systemPrompt,
-        'inputText': inputText,
-        'mediaPath': mediaPath,
-        'mediaType': mediaType,
-      }, onEvent: (event) {
-        switch (event['type']) {
-          case 'loading':
-            onModelLoading?.call();
-          case 'ready':
-            onModelLoaded?.call();
-          case 'delta':
-            onDelta?.call(event['text'] as String);
-          case 'metrics':
-            onMetrics?.call((event['ttftMs'] as num?)?.toDouble(),
-                (event['tps'] as num?)?.toDouble());
-        }
-      });
+    void Function(String? mtpError)? onModelLoaded,
+    void Function()? onHistoryReset,
+  }) {
+    final resetHistory = _resetHistory;
+    _resetHistory = false;
+    return _worker.run({
+      'modelPath': model.path,
+      'mmprojPath': mmproj.path,
+      'mtpPath': mtpAssistant?.path ?? '',
+      'backend': backend,
+      'nCtx': nCtx,
+      'systemPrompt': systemPrompt,
+      'inputText': inputText,
+      'mediaPath': mediaPath,
+      'mediaType': mediaType,
+      'resetHistory': resetHistory,
+    }, onEvent: (event) {
+      switch (event['type']) {
+        case 'loading':
+          onModelLoading?.call();
+        case 'historyReset':
+          onHistoryReset?.call();
+        case 'ready':
+          onModelLoaded?.call(event['mtpError'] as String?);
+        case 'delta':
+          onDelta?.call(event['text'] as String);
+        case 'metrics':
+          onMetrics?.call((event['ttftMs'] as num?)?.toDouble(),
+              (event['tps'] as num?)?.toDouble());
+      }
+    });
+  }
 
   /// Releases the persistent worker, stopping generation between tokens.
   void cancel() => _worker.cancel();

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -7,14 +6,22 @@ import 'package:flutter/material.dart';
 import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
+import '../../large_language_model/mtp.dart';
+import '../../large_language_model/qnn_model.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
 import 'camera_input.dart';
+import 'chat_bubble.dart';
 import 'demo_session.dart';
+import 'mtp_switch.dart';
 import 'still_image.dart';
 
-/// VLM (image + text) demo: describes the sample image or a
-/// still frame captured from the camera.
+const _sampleImageUrl =
+    "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg";
+
+/// VLM (image + text) chat: the first question carries the sample image
+/// (or a still frame captured from the camera on every message), and
+/// follow-up questions continue the same conversation.
 class VlmDemoPage extends StatefulWidget {
   const VlmDemoPage({super.key, required this.model});
 
@@ -24,14 +31,28 @@ class VlmDemoPage extends StatefulWidget {
   State<VlmDemoPage> createState() => _VlmDemoPageState();
 }
 
-class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
+class _VlmDemoPageState extends State<VlmDemoPage>
+    with SafeSetStateMixin, MtpToggleMixin {
   final DemoSession _session = DemoSession();
   final CameraInput _camera = CameraInput();
   final MultimodalLargeLanguageModel _vlm = MultimodalLargeLanguageModel();
+  final ScrollController _scrollController = ScrollController();
 
-  // Query for the multimodal (image + text) LLM demo.
   final TextEditingController _queryController =
       TextEditingController(text: 'この画像を簡潔に説明してください。');
+
+  final List<ChatTurn> _turns = [];
+
+  /// Camera stills copied per message, since the camera reuses one file
+  /// and earlier messages must keep their own frame.
+  final List<File> _frames = [];
+
+  /// Whether the conversation already holds the sample image.
+  bool _sampleSent = false;
+
+  /// Backend / MTP the conversation runs on; a change reopens the model,
+  /// which starts a new conversation.
+  (String, bool)? _conversationConfig;
 
   bool _useCamera = false;
   ui.Image? _image;
@@ -40,12 +61,13 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
   void initState() {
     super.initState();
     _loadSampleImage();
-    // Automation hook: AILIA_AUTO_RUN=1 presses Run once the page is up
+    // Automation hook: AILIA_AUTO_RUN=1 sends the query once the page is up
     // and reports the outcome on stdout (used together with
     // AILIA_OPEN_MODEL and AILIA_SCREENSHOT).
     if (Platform.environment['AILIA_AUTO_RUN'] == '1') {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await _run();
+        await _send();
+        debugPrint('AILIA_AUTO_RUN reply: ${_turns.lastOrNull?.text}');
         debugPrint('AILIA_AUTO_RUN result: ${_session.result}');
         debugPrint('AILIA_AUTO_RUN error: ${_session.errorText}');
       });
@@ -55,26 +77,39 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
   @override
   void dispose() {
     _queryController.dispose();
+    _scrollController.dispose();
     _camera.dispose();
     // Stop the inference isolate if a run is still in flight.
     _vlm.cancel();
     _session.dispose();
+    for (final frame in _frames) {
+      try {
+        frame.deleteSync();
+      } catch (_) {}
+    }
     super.dispose();
   }
 
-  /// Shows the demo's sample image (downloaded, not bundled) next to
-  /// the query box before the first run.
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
+  }
+
+  /// Shows the demo's sample image (downloaded, not bundled) above the
+  /// conversation.
   Future<void> _loadSampleImage() async {
     try {
       final imageFile = await MultimodalLargeLanguageModel.downloadFile(
-          "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg",
-          await getModelPath("sample_image.jpg"));
+          _sampleImageUrl, await getModelPath("sample_image.jpg"));
       final loaded = await decodeImageFromList(await imageFile.readAsBytes());
       safeSetState(() {
         _image = loaded;
       });
     } catch (_) {
-      // The image appears after the model download instead.
+      // The image is downloaded again when the first message is sent.
     }
   }
 
@@ -89,155 +124,179 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       await _camera.close();
       safeSetState(() {
         _useCamera = false;
+        // Ask about the sample image again after camera frames.
+        _sampleSent = false;
       });
       _loadSampleImage();
     }
   }
 
-  Future<void> _run() {
-    final query = _queryController.text.trim();
-    return _session.run(() async {
-      if (_useCamera) {
-        // The captured frame freezes the preview; inference uses it.
-        await _camera.captureStill();
-      } else {
-        _camera.clearCapture();
-      }
-      await _runMultimodal(query);
+  void _clearChat() {
+    _vlm.clearHistory();
+    _session.showResult('');
+    safeSetState(() {
+      _turns.clear();
+      _sampleSent = false;
     });
   }
 
-  Future<void> _runMultimodal(String query) async {
-    try {
-      final backend = BackendState.instance.selectedLlmBackend.value;
-      final modelList = _vlm.getModelList(widget.model.id, backend);
-      if (!await _session.downloadModelList(modelList) || !mounted) {
-        return;
-      }
-      String imagePath;
-      final capturedPath = _camera.capturedPath;
-      if (capturedPath != null) {
-        imagePath = capturedPath;
-      } else {
-        _session.showResult("Downloading sample image...");
-        File imageFile = await MultimodalLargeLanguageModel.downloadFile(
-            "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg",
-            await getModelPath("sample_image.jpg"));
-        imagePath = imageFile.path;
-      }
-
-      Uint8List imageBytes = await File(imagePath).readAsBytes();
-      // The captured frame is already shown as the frozen camera
-      // preview; only show the sample image separately.
-      final loaded =
-          capturedPath == null ? await decodeImageFromList(imageBytes) : null;
-      safeSetState(() {
-        _image = loaded;
-      });
-
-      _session.showResult("Models downloaded. Ready for inference.");
-      _session.clearStatus();
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      if (!mounted) return;
-      await _performInference(imagePath, modelList, backend, query);
-    } catch (e) {
-      _session.showError(e);
-    }
+  /// Drops the bubbles before [current] after the worker started a new
+  /// conversation (context full).
+  void _keepOnly(ChatTurn current) {
+    safeSetState(() {
+      _turns.removeRange(0, _turns.indexOf(current));
+    });
   }
 
-  Future<void> _performInference(String imagePath, List<String> modelList,
-      String selectedBackend, String query) async {
-    try {
-      _session.showResult('Preparing image...');
+  /// Returns the image to attach to the next message, or null for a
+  /// text-only follow-up question.
+  Future<String?> _nextImage() async {
+    if (_useCamera) {
+      // The captured frame freezes the preview; inference uses it.
+      await _camera.captureStill();
+      final captured = _camera.capturedPath;
+      if (captured == null) throw StateError('Camera capture failed');
+      final frame = await File(captured).copy(
+          '${Directory.systemTemp.path}/ailia-vlm-${DateTime.now().microsecondsSinceEpoch}.jpg');
+      _frames.add(frame);
+      return frame.path;
+    }
+    _camera.clearCapture();
+    if (_sampleSent) return null;
+    final file = await MultimodalLargeLanguageModel.downloadFile(
+        _sampleImageUrl, await getModelPath("sample_image.jpg"));
+    return file.path;
+  }
 
-      final type = widget.model.id;
-      File modelFile = File(await getModelPath(modelList[1]));
-      File mmprojFile = File(await getModelPath(modelList[3]));
+  Future<void> _send() async {
+    final query = _queryController.text.trim();
+    if (query.isEmpty || _session.processing) return;
+    await _session.run(() async {
+      final backend = BackendState.instance.selectedLlmBackend.value;
+      final modelList = _vlm.getModelList(widget.model.id, backend, mtp);
+      if (!await _session.downloadModelList(modelList) || !mounted) return;
+      final modelFile = File(await getModelPath(modelList[1]));
+      final mmprojFile = File(await getModelPath(modelList[3]));
+      final useMtp = modelList.length > 4;
+      final mtpFile = useMtp ? File(await getModelPath(modelList[5])) : null;
+      if (_conversationConfig != (backend, useMtp)) {
+        // The model is reopened, so the conversation starts over.
+        _conversationConfig = (backend, useMtp);
+        _vlm.clearHistory();
+        _turns.clear();
+        _sampleSent = false;
+      }
+      final imagePath = await _nextImage();
       if (!mounted) return;
 
-      int startTime = DateTime.now().millisecondsSinceEpoch;
+      final user = ChatTurn.user(query, imagePath: imagePath);
+      final reply = ChatTurn.assistant();
+      _queryController.clear();
+      safeSetState(() {
+        _turns
+          ..add(user)
+          ..add(reply);
+      });
+      _scrollToBottom();
 
-      // Generation runs in an isolate; stream tokens into the result
-      // panel, repainting at most once per frame.
-      final reply = StringBuffer();
+      final watch = Stopwatch()..start();
       int lastPaintMs = 0;
       double? ttftMs;
       double? tps;
-      String outputText = await _vlm.chatWithImageIsolate(
-        model: modelFile,
-        mmproj: mmprojFile,
-        backend: selectedBackend,
-        nCtx: MultimodalLargeLanguageModel.contextSize(
-            type, modelFile.path, selectedBackend),
-        systemPrompt: '',
-        inputText: query,
-        imagePath: imagePath,
-        onModelLoading: () =>
-            _session.showResult('Loading model with selected backend...'),
-        onModelLoaded: () => _session.showResult('Image Processing...'),
-        onDelta: (delta) {
-          reply.write(delta);
-          final nowMs = DateTime.now().millisecondsSinceEpoch;
-          if (nowMs - lastPaintMs >= 33) {
-            lastPaintMs = nowMs;
-            _session.showResult(reply.toString());
-          }
-        },
-        onMetrics: (firstMs, tokensPerSecond) {
-          ttftMs = firstMs;
-          tps = tokensPerSecond;
-        },
-      );
-
-      int endTime = DateTime.now().millisecondsSinceEpoch;
-      String profileText = 'processing time : ${endTime - startTime} ms\n'
+      String? mtpError;
+      try {
+        reply.text = await _vlm.chatWithImageIsolate(
+          model: modelFile,
+          mmproj: mmprojFile,
+          backend: backend,
+          nCtx: MultimodalLargeLanguageModel.contextSize(
+              widget.model.id, modelFile.path, backend),
+          systemPrompt: '',
+          inputText: query,
+          imagePath: imagePath,
+          mtpAssistant: mtpFile,
+          onModelLoading: () =>
+              _session.setStatus('Loading model with selected backend...'),
+          onModelLoaded: (error) {
+            mtpError = error;
+            if (imagePath != null) _sampleSent = !_useCamera;
+            _session.setStatus(
+                imagePath == null ? 'Generating...' : 'Image Processing...');
+          },
+          onHistoryReset: () => _keepOnly(user),
+          onDelta: (delta) {
+            if (reply.text.isEmpty) _session.clearStatus();
+            reply.text += delta;
+            if (watch.elapsedMilliseconds - lastPaintMs >= 33) {
+              lastPaintMs = watch.elapsedMilliseconds;
+              safeSetState(() {});
+              _scrollToBottom();
+            }
+          },
+          onMetrics: (firstMs, tokensPerSecond) {
+            ttftMs = firstMs;
+            tps = tokensPerSecond;
+          },
+        );
+      } catch (_) {
+        // A failed turn closes the model and its conversation.
+        _session.clearStatus();
+        _conversationConfig = null;
+        safeSetState(() {
+          _turns.clear();
+          _sampleSent = false;
+        });
+        rethrow;
+      }
+      _session.clearStatus();
+      safeSetState(() {});
+      _scrollToBottom();
+      _session.showResult('processing time : ${watch.elapsedMilliseconds} ms\n'
           'TTFT: ${formatTtft(ttftMs)}\n'
-          'TPS: ${formatTps(tps)} tokens/s';
-
-      _session.showResult("$outputText\n$profileText");
-    } catch (e) {
-      _session.showError("Inference Error: $e");
-    }
+          'TPS: ${formatTps(tps)} tokens/s\n'
+          '${mtpStatusText(requested: useMtp, error: mtpError)}');
+    });
   }
 
+  /// Image / Web Camera selector followed by the MTP toggle on one row.
   Widget _buildSourceSelector() {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(
-                value: false, label: Text('Image'), icon: Icon(Icons.image)),
-            ButtonSegment(
-                value: true,
-                label: Text('Web Camera'),
-                icon: Icon(Icons.videocam)),
-          ],
-          selected: {_useCamera},
-          onSelectionChanged: (selection) {
-            _switchSource(selection.first);
-          },
-        ),
+        if (CameraInput.supported)
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(
+                  value: false, label: Text('Image'), icon: Icon(Icons.image)),
+              ButtonSegment(
+                  value: true,
+                  label: Text('Web Camera'),
+                  icon: Icon(Icons.videocam)),
+            ],
+            selected: {_useCamera},
+            onSelectionChanged: (selection) {
+              _switchSource(selection.first);
+            },
+          ),
         if (_useCamera) ...[
           const SizedBox(width: 12),
           CameraDeviceSelector(input: _camera),
         ],
+        if (supportsMtp(widget.model.id)) ...[
+          const SizedBox(width: 12),
+          ListenableBuilder(
+            listenable: _session,
+            builder: (context, _) => MtpSwitch(
+              value: mtp,
+              onChanged: _session.processing
+                  ? null
+                  : (value) => safeSetState(() {
+                        mtp = value;
+                      }),
+            ),
+          ),
+        ],
       ],
-    );
-  }
-
-  Widget _buildQueryField() {
-    return DemoPanel(
-      child: TextField(
-        controller: _queryController,
-        decoration: const InputDecoration(
-          labelText: 'Query',
-          border: OutlineInputBorder(),
-        ),
-        minLines: 1,
-        maxLines: 3,
-      ),
     );
   }
 
@@ -249,18 +308,47 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
     return StillImageBox(image: image);
   }
 
+  Widget _buildChat() {
+    return ListenableBuilder(
+      listenable: _session,
+      builder: (context, _) => DemoPanel(
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: 'Clear conversation',
+                onPressed:
+                    _session.processing || _turns.isEmpty ? null : _clearChat,
+                icon: const Icon(Icons.delete_sweep, size: 20),
+              ),
+            ),
+            for (final turn in _turns) ChatBubble(turn: turn),
+            const SizedBox(height: 8),
+            ChatInputRow(
+              controller: _queryController,
+              label: 'Query',
+              onSend: _session.processing ? null : _send,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DemoPageScaffold(
       model: widget.model,
       session: _session,
+      scrollController: _scrollController,
       children: [
-        if (CameraInput.supported) _buildSourceSelector(),
+        if (CameraInput.supported || supportsMtp(widget.model.id))
+          _buildSourceSelector(),
         const SizedBox(height: 8),
         if (_useCamera) CameraPreviewView(input: _camera),
-        _buildQueryField(),
         _buildImage(context),
-        DemoRunButton(session: _session, onPressed: _run),
+        _buildChat(),
       ],
     );
   }

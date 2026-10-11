@@ -90,7 +90,7 @@ void main() {
     for (final soc in windowsQnnSocs) {
       expect(
           ToolUseModel.modelFiles('HTP (QNN): Qualcomm Hexagon HTP', soc: soc),
-          ['gemma/qnn/v1.5.0', 'gemma4-e2b-$soc.qnn']);
+          ['gemma/qnn/v1.5.1', 'gemma4-e2b-$soc-${qnnPrecision(soc)}-mtp.qnn']);
     }
     for (final backend in ['CPU', 'Metal: Apple GPU', 'Vulkan', 'OpenCL']) {
       expect(ToolUseModel.modelFiles(backend, soc: 'qcs6490'),
