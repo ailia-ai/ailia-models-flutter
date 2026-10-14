@@ -28,6 +28,8 @@ const Map<String, String> _markerFiles = {
   'gpt-sovits-ja': 'vits.onnx',
   'gpt-sovits-en': 'homographs.en',
   'gpt-sovits-zh': 'jieba.dict.utf8',
+  // Shared by the Normal / Distill Small / Distill Base variants.
+  'gpt-sovits-v2pro-ja': 'gpt-sovits-v2-pro/sv.onnx',
   'sdxl': 'sdxl/sdxl_unet_fp16.onnx',
   'gemma2': 'gemma-2-2b-it-Q4_K_M.gguf',
   'gemma4-e2b-tool-use': 'gemma-4-E2B-it-Q4_K_M.gguf',
