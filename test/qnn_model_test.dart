@@ -25,6 +25,34 @@ void main() {
         throwsUnsupportedError);
   });
 
+  test('debug option loads the v1.5.0 context binaries', () {
+    addTearDown(() => qnnModelFormat = QnnModelFormat.v151);
+    expect(qnnModelFormat, QnnModelFormat.v151);
+    qnnModelFormat = QnnModelFormat.v150;
+    expect(qnnTextModelFiles('gemma4-e2b', 'sc8380xp'),
+        ['gemma/qnn/v1.5.0', 'gemma4-e2b-sc8380xp.qnn']);
+    expect(qnnTextModelFiles('gemma4-e4b', 'sc8380xp'),
+        ['gemma/qnn/v1.5.0', 'gemma4-e4b-sc8380xp.qnn']);
+    expect(qnnTextModelFiles('gemma4-e2b', 'qcs6490'),
+        ['gemma/qnn/v1.5.0', 'gemma4-e2b-qcs6490.qnn']);
+    // The assistant only exists for the v1.5.1 bodies.
+    expect(mtpAssistantFiles('gemma4-e2b', 'HTP', soc: 'sc8380xp')[0],
+        'gemma/qnn/v1.5.1');
+  });
+
+  test('MTP is unavailable only for the v1.5.0 QNN format', () {
+    addTearDown(() => qnnModelFormat = QnnModelFormat.v151);
+    expect(mtpAvailable('gemma4-e2b', 'HTP'), isTrue);
+    expect(mtpAvailable('gemma2', 'CPU'), isFalse);
+    qnnModelFormat = QnnModelFormat.v150;
+    expect(mtpAvailable('gemma4-e2b', 'HTP'), isFalse);
+    expect(mtpAvailable('gemma4-e2b-vlm', 'HTP (QNN): Qualcomm Hexagon HTP'),
+        isFalse);
+    // GGUF backends do not load .qnn files.
+    expect(mtpAvailable('gemma4-e2b', 'CPU'), isTrue);
+    expect(mtpAvailable('gemma4-e2b-alm', 'Metal'), isTrue);
+  });
+
   test('selects the MTP assistant matching the body', () {
     expect(mtpAssistantFiles('gemma4-e2b', 'HTP', soc: 'sc8380xp'),
         ['gemma/qnn/v1.5.1', 'gemma4-e2b-sc8380xp-fp16-mtp-assistant.qnn']);

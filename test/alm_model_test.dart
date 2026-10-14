@@ -28,6 +28,20 @@ void main() {
     }
   });
 
+  test('v1.5.0 QNN format never downloads the MTP assistant', () {
+    addTearDown(() => qnnModelFormat = QnnModelFormat.v151);
+    qnnModelFormat = QnnModelFormat.v150;
+    expect(
+        multimodalModelFiles('gemma4-e2b-alm', 'HTP',
+            soc: 'sc8380xp', mtp: true),
+        [
+          'gemma/qnn/v1.5.0',
+          'gemma4-e2b-sc8380xp.qnn',
+          'gemma/qnn/v1.5.0',
+          'gemma4-e2b-sc8380xp-mmproj.qnn',
+        ]);
+  });
+
   test('ALM appends the MTP assistant only when requested', () {
     expect(multimodalModelFiles('gemma4-e2b-alm', 'CPU', mtp: true), [
       ...multimodalModelFiles('gemma4-e2b-alm', 'CPU'),

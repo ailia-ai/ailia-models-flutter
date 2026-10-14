@@ -5,7 +5,7 @@ import 'qnn_model.dart';
 List<String> multimodalModelFiles(String type, String backend,
     {String? soc, bool mtp = false}) {
   final files = _multimodalModelFiles(type, backend, soc: soc);
-  if (mtp && supportsMtp(type)) {
+  if (mtp && mtpAvailable(type, backend)) {
     return [...files, ...mtpAssistantFiles(type, backend, soc: soc)];
   }
   return files;

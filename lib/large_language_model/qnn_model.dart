@@ -28,9 +28,27 @@ List<String> qnnTextModelFiles(String type, String soc) {
   if (type == 'gemma4-e4b' && soc != 'sc8380xp') {
     throw UnsupportedError('Gemma 4 E4B requires sc8380xp on Windows HTP.');
   }
+  if (qnnModelFormat == QnnModelFormat.v150) {
+    // Pre-MTP context binaries, for checking compatibility with the
+    // current library. They have no AR-4 graph, so MTP cannot open.
+    return [qnnMmprojFolder, '$type-$soc.qnn'];
+  }
   // MTP-capable bodies also generate normally when no assistant is opened.
   return [qnnModelFolder, '$type-$soc-${qnnPrecision(soc)}-mtp.qnn'];
 }
+
+/// Published QNN context binary formats for the Gemma 4 text body.
+enum QnnModelFormat {
+  v150('v1.5.0'),
+  v151('v1.5.1');
+
+  const QnnModelFormat(this.label);
+  final String label;
+}
+
+/// Debug option chosen in Settings. Not persisted: every launch starts
+/// with the MTP-capable v1.5.1 format.
+QnnModelFormat qnnModelFormat = QnnModelFormat.v151;
 
 /// ailia LLM 1.5.1 context binaries (QAIRT 2.47) with the AR-4 MTP graph.
 const qnnModelFolder = 'gemma/qnn/v1.5.1';
@@ -52,6 +70,12 @@ bool supportsMtp(String type) =>
     type == 'gemma4-e2b-vlm' ||
     type == 'gemma4-e2b-alm' ||
     type == 'gemma4-e2b-tool-use';
+
+/// Whether MTP can be used for [type] on [backend]. The v1.5.0 QNN
+/// context binaries have no AR-4 verification graph, so MTP is off there.
+bool mtpAvailable(String type, String backend) =>
+    supportsMtp(type) &&
+    !(isLlmQnnBackend(backend) && qnnModelFormat == QnnModelFormat.v150);
 
 /// [folder, file] of the MTP assistant matching the body opened for
 /// [type] on [backend]. The assistant must share the body's SoC, model

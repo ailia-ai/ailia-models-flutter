@@ -2,6 +2,7 @@ import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/qnn_model.dart';
 import '../../large_language_model/qnn_runtime.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/mtp.dart';
@@ -54,7 +55,7 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
   }
 
   Future<void> _ensureModel(String backend) async {
-    final useMtp = mtp;
+    final useMtp = mtp && mtpAvailable(widget.model.id, backend);
     // The MTP assistant cannot be detached, so a change reopens the model.
     if (_worker != null && _backend == backend && _workerMtp == useMtp) return;
     if (_worker != null) {
@@ -222,6 +223,7 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
               const SizedBox(width: 16),
               MtpSwitch(
                   value: mtp,
+                  available: mtpAvailableFor(widget.model.id),
                   onChanged: _busy
                       ? null
                       : (value) => safeSetState(() {
@@ -241,7 +243,8 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
                     color: message['role'] == 'user'
                         ? colors.primaryContainer
                         : message['role'] == 'tool'
-                            ? colors.tertiaryContainer
+                            // Blue: an accepted tool call, not an error.
+                            ? Colors.blue.shade100
                             : colors.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12)),
                 child: Column(

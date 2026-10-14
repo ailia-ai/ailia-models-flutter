@@ -8,6 +8,7 @@ import '../utils/download_model.dart';
 import '../utils/qnn_device.dart';
 import '../utils/qnn_support.dart';
 import 'demo_screen.dart';
+import 'settings_screen.dart';
 
 /// Representative file per model, used to show a "downloaded" badge on
 /// the model card. Paths are relative to the app's model directory.
@@ -117,6 +118,18 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('ailia MODELS Flutter'),
+        actions: [
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings),
+            onPressed: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (context) => const SettingsScreen()));
+              // The QNN model format decides which files count as downloaded.
+              _refreshDownloaded();
+            },
+          ),
+        ],
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),

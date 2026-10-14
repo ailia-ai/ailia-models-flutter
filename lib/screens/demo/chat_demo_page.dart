@@ -64,7 +64,7 @@ class _ChatDemoPageState extends State<ChatDemoPage>
   Future<void> _ensureModel() async {
     // ailia LLM has its own backend list; use the LLM selection.
     String selectedBackend = BackendState.instance.selectedLlmBackend.value;
-    final useMtp = mtp && supportsMtp(widget.model.id);
+    final useMtp = mtp && mtpAvailable(widget.model.id, selectedBackend);
     if (_llm != null) {
       if (selectedBackend == _llmBackend && useMtp == _llmMtp) {
         return;
@@ -249,6 +249,7 @@ class _ChatDemoPageState extends State<ChatDemoPage>
               if (supportsMtp(widget.model.id))
                 MtpSwitch(
                   value: mtp,
+                  available: mtpAvailableFor(widget.model.id),
                   onChanged: _generating
                       ? null
                       : (value) => safeSetState(() {

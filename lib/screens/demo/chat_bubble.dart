@@ -1,20 +1,13 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
-/// One message of a demo conversation. User turns may carry the image or
-/// audio that was sent with them.
+/// One message of a demo conversation. The image or audio sent with a
+/// question is already shown on the page, so bubbles hold text only.
 class ChatTurn {
-  ChatTurn.user(this.text, {this.imagePath, this.audioLabel}) : isUser = true;
-  ChatTurn.assistant([this.text = ''])
-      : isUser = false,
-        imagePath = null,
-        audioLabel = null;
+  ChatTurn.user(this.text) : isUser = true;
+  ChatTurn.assistant([this.text = '']) : isUser = false;
 
   final bool isUser;
   String text;
-  final String? imagePath;
-  final String? audioLabel;
 }
 
 /// Chat bubble shared by the LLM / VLM / ALM demos: user messages on the
@@ -27,8 +20,6 @@ class ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final imagePath = turn.imagePath;
-    final audioLabel = turn.audioLabel;
     return Align(
       alignment: turn.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -41,31 +32,7 @@ class ChatBubble extends StatelessWidget {
               : scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (imagePath != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.file(File(imagePath),
-                      height: 120, cacheHeight: 240, fit: BoxFit.contain),
-                ),
-              ),
-            if (audioLabel != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.graphic_eq, size: 18),
-                  const SizedBox(width: 4),
-                  Text(audioLabel),
-                ]),
-              ),
-            SelectableText(turn.text),
-          ],
-        ),
+        child: SelectableText(turn.text),
       ),
     );
   }

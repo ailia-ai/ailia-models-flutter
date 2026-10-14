@@ -212,10 +212,7 @@ class _AlmDemoPageState extends State<AlmDemoPage>
         }
         // Only a new recording is attached; follow-ups are text only.
         final audio = _audio;
-        final user = ChatTurn.user(query,
-            audioLabel: audio == null
-                ? null
-                : 'Audio ${_audioSeconds.toStringAsFixed(1)} s');
+        final user = ChatTurn.user(query);
         final reply = ChatTurn.assistant();
         _query.clear();
         safeSetState(() {
@@ -350,6 +347,7 @@ class _AlmDemoPageState extends State<AlmDemoPage>
                             const SizedBox(width: 12),
                             MtpSwitch(
                               value: mtp,
+                              available: mtpAvailableFor(widget.model.id),
                               onChanged: _session.processing
                                   ? null
                                   : (value) => safeSetState(() {

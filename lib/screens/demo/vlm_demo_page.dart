@@ -189,7 +189,7 @@ class _VlmDemoPageState extends State<VlmDemoPage>
       final imagePath = await _nextImage();
       if (!mounted) return;
 
-      final user = ChatTurn.user(query, imagePath: imagePath);
+      final user = ChatTurn.user(query);
       final reply = ChatTurn.assistant();
       _queryController.clear();
       safeSetState(() {
@@ -288,6 +288,7 @@ class _VlmDemoPageState extends State<VlmDemoPage>
             listenable: _session,
             builder: (context, _) => MtpSwitch(
               value: mtp,
+              available: mtpAvailableFor(widget.model.id),
               onChanged: _session.processing
                   ? null
                   : (value) => safeSetState(() {
