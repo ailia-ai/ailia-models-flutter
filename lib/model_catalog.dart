@@ -90,8 +90,8 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'gpt-sovits-zh', 'GPT-SoVITS ZH', 'Text To Speech', ModelInputKind.text,
       defaultInputText: '你好世界。'),
-  ModelInfo('gpt-sovits-v2pro-distill-ja', 'GPT-SoVITS V2Pro Distill JA',
-      'Text To Speech', ModelInputKind.text,
+  ModelInfo('gpt-sovits-v2pro-ja', 'GPT-SoVITS V2Pro JA', 'Text To Speech',
+      ModelInputKind.text,
       defaultInputText: 'こんにちは。今日はいい天気ですね。'),
   ModelInfo(
       'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
