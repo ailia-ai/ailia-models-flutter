@@ -105,7 +105,8 @@ void main() {
     );
     expect(messages, hasLength(1));
     expect(messages.single['role'], 'user');
-    expect(messages.single['content'], '画像の文字を読んでください。 <__media__>');
+    // Gemma 4 recommends the image before the text.
+    expect(messages.single['content'], '<__media__>\n画像の文字を読んでください。');
   });
 
   test('rejects unsupported media before calling the native runtime', () {
