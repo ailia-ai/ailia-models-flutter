@@ -32,14 +32,14 @@ class FakeMediaModel extends AiliaLLMModel {
   void setPrompt(List<Map<String, dynamic>> messages) {
     if (messages.isEmpty) throw StateError('Empty prompts are unsupported');
     events.send({'type': 'promptSet'});
-    if (messages.last['content'] == 'fail <__media__>') {
+    if ((messages.last['content'] as String).contains('fail')) {
       throw StateError('Failed prompt');
     }
     final media = (messages.last['media_data'] as List?)?.single as Map?;
     final path = media?['file_path'] ?? 'text';
     endless = path == 'endless';
     // Ask for a context reset on the next turn when requested.
-    full = (messages.last['content'] as String).startsWith('fill');
+    full = (messages.last['content'] as String).contains('fill');
     next = '$opens:${messages.length}:$path';
   }
 
