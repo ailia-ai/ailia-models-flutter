@@ -9,6 +9,7 @@ import '../../large_language_model/mtp.dart';
 import '../../large_language_model/tool_use_model.dart';
 import '../../large_language_model/tool_use_worker.dart';
 import '../../model_catalog.dart';
+import 'chat_bubble.dart';
 import 'demo_session.dart';
 import 'mtp_switch.dart';
 
@@ -257,28 +258,33 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
                     ]),
               ),
             const SizedBox(height: 8),
-            TextField(
-                controller: _input,
-                minLines: 1,
-                maxLines: 3,
-                enabled: !_busy,
-                decoration: const InputDecoration(
-                    labelText: 'Message', border: OutlineInputBorder()),
-                onSubmitted: (_) => _send()),
+            SendShortcut(
+              onSend: _busy ? null : _send,
+              child: TextField(
+                  controller: _input,
+                  minLines: 1,
+                  maxLines: 3,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                      labelText: 'Message', border: OutlineInputBorder()),
+                  onSubmitted: (_) => _send()),
+            ),
             const SizedBox(height: 8),
-            FilledButton.icon(
-                onPressed: _busy
-                    ? (_cancelled
-                        ? null
-                        : () {
-                            safeSetState(() {
-                              _cancelled = true;
-                            });
-                            _worker?.cancel();
-                          })
-                    : _send,
-                icon: Icon(_busy ? Icons.stop : Icons.send),
-                label: Text(_busy ? 'Stop' : 'Send')),
+            Tooltip(
+                message: _busy ? 'Stop' : 'Send ($sendShortcutLabel)',
+                child: FilledButton.icon(
+                    onPressed: _busy
+                        ? (_cancelled
+                            ? null
+                            : () {
+                                safeSetState(() {
+                                  _cancelled = true;
+                                });
+                                _worker?.cancel();
+                              })
+                        : _send,
+                    icon: Icon(_busy ? Icons.stop : Icons.send),
+                    label: Text(_busy ? 'Stop' : 'Send'))),
           ],
         ))
       ],

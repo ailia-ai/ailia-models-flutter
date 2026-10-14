@@ -9,6 +9,7 @@ import '../../large_language_model/large_language_model.dart';
 import '../../large_language_model/mtp.dart';
 import '../../large_language_model/qnn_model.dart';
 import '../../model_catalog.dart';
+import 'chat_bubble.dart';
 import 'demo_session.dart';
 import 'mtp_switch.dart';
 
@@ -289,26 +290,9 @@ class _ChatDemoPageState extends State<ChatDemoPage>
               ),
             ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _textController,
-                  decoration: const InputDecoration(
-                    labelText: 'Message',
-                    border: OutlineInputBorder(),
-                  ),
-                  minLines: 1,
-                  maxLines: 3,
-                  onSubmitted: (_) => _sendMessage(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                onPressed: _generating ? null : _sendMessage,
-                icon: const Icon(Icons.send),
-              ),
-            ],
+          ChatInputRow(
+            controller: _textController,
+            onSend: _generating ? null : _sendMessage,
           ),
         ],
       ),
