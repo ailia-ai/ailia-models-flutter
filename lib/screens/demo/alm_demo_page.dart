@@ -19,9 +19,9 @@ import 'demo_session.dart';
 import 'mtp_switch.dart';
 import 'waveform_view.dart';
 
-/// Chats with Gemma 4 about local microphone recordings: a new recording
-/// is attached to the next message, and follow-up questions continue the
-/// same conversation.
+/// Chats with Gemma 4 about local microphone recordings: the recording is
+/// attached to the first message only, and follow-up questions continue
+/// the same conversation. A new recording starts a new conversation.
 class AlmDemoPage extends StatefulWidget {
   const AlmDemoPage({super.key, required this.model});
   final ModelInfo model;
@@ -149,11 +149,15 @@ class _AlmDemoPageState extends State<AlmDemoPage>
       if (path == null) throw StateError('No microphone recording was saved.');
       final seconds = await prepareRecordedWav(File(path));
       if (!mounted) return;
+      final restarted = _turns.isNotEmpty;
+      // Each conversation is about one recording.
+      if (restarted) _clearChat();
       safeSetState(() {
         _audio = File(path);
         _audioSeconds = seconds;
       });
       _session.showResult('Recorded ${seconds.toStringAsFixed(1)} seconds. '
+          '${restarted ? 'Started a new conversation. ' : ''}'
           'Send a question to analyze it.');
     } catch (e) {
       try {
@@ -210,7 +214,8 @@ class _AlmDemoPageState extends State<AlmDemoPage>
           _alm.clearHistory();
           _turns.clear();
         }
-        // Only a new recording is attached; follow-ups are text only.
+        // Only the first message carries the recording; a pending one
+        // exists only before the conversation starts.
         final audio = _audio;
         final user = ChatTurn.user(query);
         final reply = ChatTurn.assistant();

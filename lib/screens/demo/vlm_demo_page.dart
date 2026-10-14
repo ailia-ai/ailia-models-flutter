@@ -20,8 +20,8 @@ const _sampleImageUrl =
     "https://storage.googleapis.com/ailia-models/misc/sample_image.jpg";
 
 /// VLM (image + text) chat: the first question carries the sample image
-/// (or a still frame captured from the camera on every message), and
-/// follow-up questions continue the same conversation.
+/// or a still frame captured from the camera, and follow-up questions
+/// continue the same conversation about that image.
 class VlmDemoPage extends StatefulWidget {
   const VlmDemoPage({super.key, required this.model});
 
@@ -43,12 +43,9 @@ class _VlmDemoPageState extends State<VlmDemoPage>
 
   final List<ChatTurn> _turns = [];
 
-  /// Camera stills copied per message, since the camera reuses one file
-  /// and earlier messages must keep their own frame.
-  final List<File> _frames = [];
-
-  /// Whether the conversation already holds the sample image.
-  bool _sampleSent = false;
+  /// Whether the conversation already holds its image; only the first
+  /// message carries one.
+  bool _imageSent = false;
 
   /// Backend / MTP the conversation runs on; a change reopens the model,
   /// which starts a new conversation.
@@ -82,11 +79,6 @@ class _VlmDemoPageState extends State<VlmDemoPage>
     // Stop the inference isolate if a run is still in flight.
     _vlm.cancel();
     _session.dispose();
-    for (final frame in _frames) {
-      try {
-        frame.deleteSync();
-      } catch (_) {}
-    }
     super.dispose();
   }
 
@@ -113,7 +105,10 @@ class _VlmDemoPageState extends State<VlmDemoPage>
     }
   }
 
+  /// Switching between the sample image and the camera starts a new
+  /// conversation; returning to the camera resumes the live preview.
   Future<void> _switchSource(bool useCamera) async {
+    _clearChat();
     if (useCamera) {
       safeSetState(() {
         _useCamera = true;
@@ -124,8 +119,6 @@ class _VlmDemoPageState extends State<VlmDemoPage>
       await _camera.close();
       safeSetState(() {
         _useCamera = false;
-        // Ask about the sample image again after camera frames.
-        _sampleSent = false;
       });
       _loadSampleImage();
     }
@@ -133,10 +126,12 @@ class _VlmDemoPageState extends State<VlmDemoPage>
 
   void _clearChat() {
     _vlm.clearHistory();
+    // The next conversation captures a new frame from the live preview.
+    _camera.clearCapture();
     _session.showResult('');
     safeSetState(() {
       _turns.clear();
-      _sampleSent = false;
+      _imageSent = false;
     });
   }
 
@@ -148,21 +143,17 @@ class _VlmDemoPageState extends State<VlmDemoPage>
     });
   }
 
-  /// Returns the image to attach to the next message, or null for a
-  /// text-only follow-up question.
+  /// Returns the image for the first message of a conversation, or null
+  /// for a text-only follow-up question.
   Future<String?> _nextImage() async {
+    if (_imageSent) return null;
     if (_useCamera) {
-      // The captured frame freezes the preview; inference uses it.
-      await _camera.captureStill();
+      // The captured frame freezes the preview for the whole conversation.
+      if (_camera.capturedPath == null) await _camera.captureStill();
       final captured = _camera.capturedPath;
       if (captured == null) throw StateError('Camera capture failed');
-      final frame = await File(captured).copy(
-          '${Directory.systemTemp.path}/ailia-vlm-${DateTime.now().microsecondsSinceEpoch}.jpg');
-      _frames.add(frame);
-      return frame.path;
+      return captured;
     }
-    _camera.clearCapture();
-    if (_sampleSent) return null;
     final file = await MultimodalLargeLanguageModel.downloadFile(
         _sampleImageUrl, await getModelPath("sample_image.jpg"));
     return file.path;
@@ -184,7 +175,7 @@ class _VlmDemoPageState extends State<VlmDemoPage>
         _conversationConfig = (backend, useMtp);
         _vlm.clearHistory();
         _turns.clear();
-        _sampleSent = false;
+        _imageSent = false;
       }
       final imagePath = await _nextImage();
       if (!mounted) return;
@@ -219,7 +210,7 @@ class _VlmDemoPageState extends State<VlmDemoPage>
               _session.setStatus('Loading model with selected backend...'),
           onModelLoaded: (error) {
             mtpError = error;
-            if (imagePath != null) _sampleSent = !_useCamera;
+            if (imagePath != null) _imageSent = true;
             _session.setStatus(
                 imagePath == null ? 'Generating...' : 'Image Processing...');
           },
@@ -244,7 +235,8 @@ class _VlmDemoPageState extends State<VlmDemoPage>
         _conversationConfig = null;
         safeSetState(() {
           _turns.clear();
-          _sampleSent = false;
+          // Resend the same image (the camera frame stays frozen).
+          _imageSent = false;
         });
         rethrow;
       }
@@ -260,44 +252,52 @@ class _VlmDemoPageState extends State<VlmDemoPage>
 
   /// Image / Web Camera selector followed by the MTP toggle on one row.
   Widget _buildSourceSelector() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (CameraInput.supported)
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(
-                  value: false, label: Text('Image'), icon: Icon(Icons.image)),
-              ButtonSegment(
-                  value: true,
-                  label: Text('Web Camera'),
-                  icon: Icon(Icons.videocam)),
-            ],
-            selected: {_useCamera},
-            onSelectionChanged: (selection) {
-              _switchSource(selection.first);
-            },
-          ),
-        if (_useCamera) ...[
-          const SizedBox(width: 12),
-          CameraDeviceSelector(input: _camera),
-        ],
-        if (supportsMtp(widget.model.id)) ...[
-          const SizedBox(width: 12),
-          ListenableBuilder(
-            listenable: _session,
-            builder: (context, _) => MtpSwitch(
-              value: mtp,
-              available: mtpAvailableFor(widget.model.id),
-              onChanged: _session.processing
+    // Rebuilt with the session so the selector is disabled while generating.
+    return ListenableBuilder(
+      listenable: _session,
+      builder: (context, _) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (CameraInput.supported)
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                    value: false,
+                    label: Text('Image'),
+                    icon: Icon(Icons.image)),
+                ButtonSegment(
+                    value: true,
+                    label: Text('Web Camera'),
+                    icon: Icon(Icons.videocam)),
+              ],
+              selected: {_useCamera},
+              onSelectionChanged: _session.processing
                   ? null
-                  : (value) => safeSetState(() {
-                        mtp = value;
-                      }),
+                  : (selection) {
+                      _switchSource(selection.first);
+                    },
             ),
-          ),
+          if (_useCamera) ...[
+            const SizedBox(width: 12),
+            CameraDeviceSelector(input: _camera),
+          ],
+          if (supportsMtp(widget.model.id)) ...[
+            const SizedBox(width: 12),
+            ListenableBuilder(
+              listenable: _session,
+              builder: (context, _) => MtpSwitch(
+                value: mtp,
+                available: mtpAvailableFor(widget.model.id),
+                onChanged: _session.processing
+                    ? null
+                    : (value) => safeSetState(() {
+                          mtp = value;
+                        }),
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
