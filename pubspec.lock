@@ -23,8 +23,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v1.5.1_beta5"
-      resolved-ref: f3115f514f319ac54e7e7f0a5acfabd1eb513aec
+      ref: "v1.5.1_beta6"
+      resolved-ref: "5ea025e6f0fde344d893b2f9c64441d545bde950"
       url: "https://github.com/ailia-ai/ailia-llm-flutter.git"
     source: git
     version: "1.5.1"
