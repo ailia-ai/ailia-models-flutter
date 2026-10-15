@@ -47,7 +47,8 @@ class _AlmDemoPageState extends State<AlmDemoPage>
   (String, bool)? _conversationConfig;
   StreamSubscription<Amplitude>? _amplitude;
 
-  /// Recording not yet sent; it is attached to the next message.
+  /// Latest recording. It is attached to the first message of every
+  /// conversation, so clearing the chat can ask about it again.
   File? _audio;
   double _audioSeconds = 0;
   DateTime? _recStart;
@@ -124,7 +125,6 @@ class _AlmDemoPageState extends State<AlmDemoPage>
         if (_recording) unawaited(_stopRecording());
       });
       safeSetState(() {
-        _audio = null;
         _recording = true;
         _recStart = DateTime.now();
       });
@@ -189,10 +189,7 @@ class _AlmDemoPageState extends State<AlmDemoPage>
   }
 
   bool get _canSend =>
-      (_audio != null || _turns.isNotEmpty) &&
-      !_recording &&
-      !_recordingBusy &&
-      !_session.processing;
+      _audio != null && !_recording && !_recordingBusy && !_session.processing;
 
   Future<void> _send() async {
     final query = _query.text.trim();
@@ -214,14 +211,12 @@ class _AlmDemoPageState extends State<AlmDemoPage>
           _alm.clearHistory();
           _turns.clear();
         }
-        // Only the first message carries the recording; a pending one
-        // exists only before the conversation starts.
-        final audio = _audio;
+        // Only the first message of a conversation carries the recording.
+        final audio = _turns.isEmpty ? _audio : null;
         final user = ChatTurn.user(query);
         final reply = ChatTurn.assistant();
         _query.clear();
         safeSetState(() {
-          _audio = null;
           _turns
             ..add(user)
             ..add(reply);
@@ -268,14 +263,11 @@ class _AlmDemoPageState extends State<AlmDemoPage>
                 tps = tokensPerSecond;
               });
         } catch (_) {
-          // A failed turn closes the model and its conversation; keep the
-          // recording so it can be sent again.
+          // A failed turn closes the model and its conversation; the next
+          // message sends the recording again.
           _session.clearStatus();
           _conversationConfig = null;
-          safeSetState(() {
-            _turns.clear();
-            _audio ??= audio;
-          });
+          safeSetState(_turns.clear);
           rethrow;
         }
         _session.clearStatus();
@@ -326,7 +318,7 @@ class _AlmDemoPageState extends State<AlmDemoPage>
                               ? 'Stop recording'
                               : 'Start recording'),
                         ),
-                        if (_audio != null) ...[
+                        if (_audio != null && _turns.isEmpty) ...[
                           const SizedBox(width: 12),
                           Text('Audio ${_audioSeconds.toStringAsFixed(1)} s '
                               'will be sent with the next message'),
