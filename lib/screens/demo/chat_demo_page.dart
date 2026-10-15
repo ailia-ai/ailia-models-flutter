@@ -5,6 +5,7 @@ import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/large_language_model.dart';
 import '../../model_catalog.dart';
+import 'chat_bubble.dart';
 import 'demo_session.dart';
 
 /// Multi-turn chat with a text LLM, streaming the reply into the
@@ -248,26 +249,9 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
               ),
             ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _textController,
-                  decoration: const InputDecoration(
-                    labelText: 'Message',
-                    border: OutlineInputBorder(),
-                  ),
-                  minLines: 1,
-                  maxLines: 3,
-                  onSubmitted: (_) => _sendMessage(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                onPressed: _generating ? null : _sendMessage,
-                icon: const Icon(Icons.send),
-              ),
-            ],
+          ChatInputRow(
+            controller: _textController,
+            onSend: _generating ? null : _sendMessage,
           ),
         ],
       ),
