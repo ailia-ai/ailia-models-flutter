@@ -92,6 +92,17 @@ class TextToSpeech {
         modelType == MODEL_TYPE_GPT_SOVITS_ZH;
   }
 
+  /// Whether [text] is English: it has Latin letters and no Japanese,
+  /// Chinese or Korean characters (kana, CJK ideographs, hangul or
+  /// full-width forms). The V2Pro models read such text with the English
+  /// G2P; mixed text keeps the Japanese one.
+  static bool isEnglishText(String text) {
+    if (!RegExp(r'[A-Za-z]').hasMatch(text)) return false;
+    return !RegExp(r'[\u3000-\u30FF\u3400-\u4DBF\u4E00-\u9FFF'
+            r'\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF]')
+        .hasMatch(text);
+  }
+
   List<String> getModelList(int modelType) {
     List<String> modelList = List<String>.empty(growable: true);
 
@@ -124,8 +135,10 @@ class TextToSpeech {
       modelList.add("open_jtalk_dic_utf_8-1.11/unk.dic");
     }
 
+    // V2Pro reads English input text with the English G2P.
     if (modelType == MODEL_TYPE_GPT_SOVITS_EN ||
-        modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
+        modelType == MODEL_TYPE_GPT_SOVITS_ZH ||
+        _v2ProFiles(modelType) != null) {
       modelList.add("g2p_en");
       modelList.add("averaged_perceptron_tagger_classes.txt");
 
@@ -264,9 +277,10 @@ class TextToSpeech {
           ailia_voice_dart.AILIA_VOICE_DICTIONARY_TYPE_OPEN_JTALK);
     }
     // The English and Chinese G2P dictionary files are downloaded flat
-    // into the model root.
+    // into the model root. V2Pro needs the English one for English input.
     if (modelType == MODEL_TYPE_GPT_SOVITS_EN ||
-        modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
+        modelType == MODEL_TYPE_GPT_SOVITS_ZH ||
+        _v2ProFiles(modelType) != null) {
       _ailiaVoiceModel.openDictionary(await getModelPath("/"),
           ailia_voice_dart.AILIA_VOICE_DICTIONARY_TYPE_G2P_EN);
     }
@@ -284,6 +298,12 @@ class TextToSpeech {
   /// and skip SetReference for speed.
   Future<void> inference(
       String targetText, String outputPath, int modelType) async {
+    final audio = await synthesize(targetText, modelType);
+    _speaker.play(audio, outputPath);
+  }
+
+  /// Synthesizes [targetText] without playing it.
+  Future<AiliaVoiceResult> synthesize(String targetText, int modelType) async {
     await open(modelType);
 
     if (_isGPTSoVITS(modelType) && !_referenceReady) {
@@ -309,21 +329,22 @@ class TextToSpeech {
     }
 
     String targetFeature = targetText;
-    if (modelType == MODEL_TYPE_GPT_SOVITS_JA ||
+    if (_v2ProFiles(modelType) != null && isEnglishText(targetText)) {
+      // V2Pro (JA/EN) switches to the English G2P for English input.
+      targetFeature = _ailiaVoiceModel.g2p(
+          targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_EN);
+    } else if (modelType == MODEL_TYPE_GPT_SOVITS_JA ||
         _v2ProFiles(modelType) != null) {
       targetFeature = _ailiaVoiceModel.g2p(
           targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA);
-    }
-    if (modelType == MODEL_TYPE_GPT_SOVITS_EN) {
+    } else if (modelType == MODEL_TYPE_GPT_SOVITS_EN) {
       targetFeature = _ailiaVoiceModel.g2p(
           targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_EN);
-    }
-    if (modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
+    } else if (modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
       targetFeature = _ailiaVoiceModel.g2p(
           targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_ZH);
     }
-    final audio = _ailiaVoiceModel.inference(targetFeature);
-    _speaker.play(audio, outputPath);
+    return _ailiaVoiceModel.inference(targetFeature);
   }
 
   /// Releases the model; the next run reopens it.
