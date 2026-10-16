@@ -9,15 +9,15 @@ import 'package:path/path.dart' as p;
 
 // Read only the expiry line; license validation is left to the SDK.
 String licenseExpiry(String? contents) {
-  if (contents == null) return 'ファイルなし';
+  if (contents == null) return 'Not found';
   final normalized = contents.replaceAll('\r\n', '\n');
   if (!normalized.startsWith(AiliaLicense.licenseFileFormat)) {
-    return '取得できません';
+    return 'Unavailable';
   }
   return RegExp(
         r'\d{4}/\d{2}/\d{2}',
       ).firstMatch(normalized.split('\n')[2])?.group(0) ??
-      '取得できません';
+      'Unavailable';
 }
 
 /// Read-only information for the title bar. No license checks or downloads.
@@ -31,23 +31,14 @@ class SdkStatus extends ChangeNotifier {
   static final SdkStatus instance = SdkStatus();
   final String Function() _readVersion;
   final Future<String?> Function() _readLicense;
-  String? version;
-  String expiry = '確認中…';
+  String get version => _readVersion();
+  String expiry = 'Loading...';
 
   Future<void> refresh() async {
-    try {
-      version = _readVersion();
-    } catch (_) {
-      version = null;
-    }
-    if (version?.contains('perpetual_license') == true) {
-      expiry = '無期限';
+    if (version.contains('perpetual_license')) {
+      expiry = 'Perpetual';
     } else {
-      try {
-        expiry = licenseExpiry(await _readLicense());
-      } catch (_) {
-        expiry = '取得できません';
-      }
+      expiry = licenseExpiry(await _readLicense());
     }
     notifyListeners();
   }

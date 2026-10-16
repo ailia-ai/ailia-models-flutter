@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ailia_models_flutter/main.dart';
+import 'package:ailia_models_flutter/sdk_status.dart';
 import 'package:ailia_models_flutter/screens/home_screen.dart';
 
 void main() {
@@ -31,7 +32,13 @@ void main() {
 
   testWidgets('home lists models including Gemma 4 E2B Tool Use',
       (tester) async {
-    await tester.pumpWidget(const MyApp());
+    final status = SdkStatus(
+      readVersion: () => 'ailia-sdk-test',
+      readLicense: () async =>
+          '--- shalo license file ---\naxell:ailia\n2099/12/31\n',
+    );
+    addTearDown(status.dispose);
+    await tester.pumpWidget(MyApp(sdkStatus: status));
     await tester.pumpAndSettle();
 
     expect(find.text('ailia MODELS Flutter'), findsOneWidget);

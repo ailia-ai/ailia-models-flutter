@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -7,46 +6,22 @@ import '../sdk_status.dart';
 import 'settings_screen.dart';
 
 /// Compact SDK/license details immediately to the left of Settings.
-class SdkStatusActions extends StatefulWidget {
+class SdkStatusActions extends StatelessWidget {
   const SdkStatusActions({super.key, this.status});
 
   final SdkStatus? status;
 
   @override
-  State<SdkStatusActions> createState() => _SdkStatusActionsState();
-}
-
-class _SdkStatusActionsState extends State<SdkStatusActions>
-    with WidgetsBindingObserver {
-  SdkStatus get _status => widget.status ?? SdkStatus.instance;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(_status.refresh());
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final sdkStatus = status ?? SdkStatus.instance;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         ListenableBuilder(
-          listenable: _status,
+          listenable: sdkStatus,
           builder: (context, _) {
-            final version = 'ailia SDK: ${_status.version ?? '取得できません'}';
-            final license = 'ライセンス期日: ${_status.expiry}';
+            final version = sdkStatus.version;
+            final license = 'License expiration: ${sdkStatus.expiry}';
             return Tooltip(
               message: '$version\n$license',
               child: Container(
@@ -82,13 +57,12 @@ class _SdkStatusActionsState extends State<SdkStatusActions>
         IconButton(
           tooltip: 'Settings',
           icon: const Icon(Icons.settings),
-          onPressed: () async {
-            await Navigator.of(context).push(
+          onPressed: () {
+            Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (context) => SettingsScreen(status: _status),
+                builder: (context) => SettingsScreen(status: sdkStatus),
               ),
             );
-            if (mounted) await _status.refresh();
           },
         ),
       ],

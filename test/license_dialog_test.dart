@@ -20,7 +20,7 @@ void main() {
     for (final code in [-20, -21, -22]) {
       session.showError(StateError('Exception: ailiaCreate failed $code'));
       await tester.pumpAndSettle();
-      expect(find.text('ライセンスファイルが見つかりません'), findsOneWidget);
+      expect(find.text('License file not found.'), findsOneWidget);
       expect(find.byType(AlertDialog), findsOneWidget);
       await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();

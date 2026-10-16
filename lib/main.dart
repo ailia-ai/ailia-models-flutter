@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'license_error_dialog.dart';
+import 'sdk_status.dart';
 import 'screens/home_screen.dart';
 import 'utils/screenshot.dart';
 
@@ -10,7 +11,9 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.sdkStatus});
+
+  final SdkStatus? sdkStatus;
 
   // Desktop Flutter does not fall back to the platform emoji font on its
   // own, so emoji in model output would render as tofu without this.
@@ -40,7 +43,7 @@ class MyApp extends StatelessWidget {
         key: screenshotBoundaryKey,
         child: child,
       ),
-      home: const HomeScreen(),
+      home: HomeScreen(status: sdkStatus),
     );
   }
 }

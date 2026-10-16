@@ -44,20 +44,20 @@ void main() {
     ]) {
       expect(licenseExpiry(contents), '2026/10/17');
     }
-    expect(licenseExpiry(null), 'ファイルなし');
-    expect(licenseExpiry('invalid header\n2026/10/17'), '取得できません');
-    expect(licenseExpiry(licenseFile('')), '取得できません');
+    expect(licenseExpiry(null), 'Not found');
+    expect(licenseExpiry('invalid header\n2026/10/17'), 'Unavailable');
+    expect(licenseExpiry(licenseFile('')), 'Unavailable');
   });
 
   test('refreshes read-only information after a file changes', () async {
     var contents = licenseFile('2020/01/01');
     final status = SdkStatus(
-      readVersion: () => '1.6.1-test-build',
+      readVersion: () => 'ailia-sdk-1.6.1-test-build',
       readLicense: () async => contents,
     );
     addTearDown(status.dispose);
     await status.refresh();
-    expect(status.version, '1.6.1-test-build');
+    expect(status.version, 'ailia-sdk-1.6.1-test-build');
     expect(status.expiry, '2020/01/01');
     contents = licenseFile('2099/12/31');
     await status.refresh();
@@ -71,17 +71,6 @@ void main() {
     );
     addTearDown(status.dispose);
     await status.refresh();
-    expect(status.expiry, '無期限');
-  });
-
-  test('native and file read failures leave the UI usable', () async {
-    final status = SdkStatus(
-      readVersion: () => throw ArgumentError('SDK unavailable'),
-      readLicense: () => throw StateError('Permission denied'),
-    );
-    addTearDown(status.dispose);
-    await status.refresh();
-    expect(status.version, isNull);
-    expect(status.expiry, '取得できません');
+    expect(status.expiry, 'Perpetual');
   });
 }

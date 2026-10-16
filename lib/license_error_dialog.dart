@@ -21,8 +21,8 @@ void showAiliaLicenseError(Object error) {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ライセンスエラー'),
-        content: const Text('ライセンスファイルが見つかりません'),
+        title: const Text('License error'),
+        content: const Text('License file not found.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),

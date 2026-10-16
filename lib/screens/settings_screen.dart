@@ -18,10 +18,10 @@ class SettingsScreen extends StatelessWidget {
           children: [
             ListTile(
               title: const Text('ailia SDK'),
-              subtitle: SelectableText(status.version ?? '取得できません'),
+              subtitle: SelectableText(status.version),
             ),
             ListTile(
-              title: const Text('ライセンス期日'),
+              title: const Text('License expiration'),
               subtitle: SelectableText(status.expiry),
             ),
           ],

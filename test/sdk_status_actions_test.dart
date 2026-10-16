@@ -8,7 +8,7 @@ void main() {
 
   setUp(() {
     status = SdkStatus(
-      readVersion: () => '1.6.1-test-build',
+      readVersion: () => 'ailia-sdk-1.6.1-test-build',
       readLicense: () async =>
           '--- shalo license file ---\naxell:ailia\n2099/12/31\n',
     );
@@ -34,8 +34,8 @@ void main() {
     tester,
   ) async {
     await pumpActions(tester);
-    final version = find.text('ailia SDK: 1.6.1-test-build');
-    final expiry = find.text('ライセンス期日: 2099/12/31');
+    final version = find.text('ailia-sdk-1.6.1-test-build');
+    final expiry = find.text('License expiration: 2099/12/31');
     final settings = find.byIcon(Icons.settings);
     expect(version, findsOneWidget);
     expect(expiry, findsOneWidget);
@@ -50,7 +50,7 @@ void main() {
     await tester.tap(settings);
     await tester.pumpAndSettle();
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('1.6.1-test-build'), findsOneWidget);
+    expect(find.text('ailia-sdk-1.6.1-test-build'), findsOneWidget);
     expect(find.text('2099/12/31'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -69,7 +69,7 @@ void main() {
       readLicense: () async => null,
     );
     await pumpActions(tester);
-    expect(find.text('ライセンス期日: ファイルなし'), findsOneWidget);
+    expect(find.text('License expiration: Not found'), findsOneWidget);
     expect(find.byIcon(Icons.settings), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
