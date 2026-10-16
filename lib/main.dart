@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'license_error_dialog.dart';
 import 'screens/home_screen.dart';
 import 'utils/screenshot.dart';
 
@@ -27,6 +28,7 @@ class MyApp extends StatelessWidget {
       useMaterial3: true,
     );
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: 'ailia MODELS Flutter',
       theme: theme.copyWith(
         textTheme:

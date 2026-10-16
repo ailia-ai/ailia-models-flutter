@@ -24,7 +24,6 @@ class _SdkStatusActionsState extends State<SdkStatusActions>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    unawaited(_status.refresh());
   }
 
   @override
@@ -47,7 +46,7 @@ class _SdkStatusActionsState extends State<SdkStatusActions>
           listenable: _status,
           builder: (context, _) {
             final version = 'ailia SDK: ${_status.version ?? '取得できません'}';
-            final license = 'ライセンス期日: ${_status.license?.label ?? '確認中…'}';
+            final license = 'ライセンス期日: ${_status.expiry}';
             return Tooltip(
               message: '$version\n$license',
               child: Container(

@@ -16,6 +16,7 @@ void main() {
   tearDown(() => status.dispose());
 
   Future<void> pumpActions(WidgetTester tester) async {
+    await status.refresh();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

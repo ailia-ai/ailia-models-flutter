@@ -1,11 +1,12 @@
 import 'dart:io';
 
+import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' show basename;
 
 import '../../backend_state.dart';
 import '../../model_catalog.dart';
-import '../../sdk_status.dart';
+import '../../license_error_dialog.dart';
 import '../../utils/download_model.dart';
 
 /// The ailia environment selected in the top bar.
@@ -32,8 +33,6 @@ class DemoSession extends ChangeNotifier {
   double? downloadProgress;
   String? errorText;
   String result = '';
-  int _licenseErrorCount = 0;
-  int get licenseErrorCount => _licenseErrorCount;
 
   /// True while a one-shot demo run is in flight (the Run button shows
   /// "Processing...").
@@ -73,7 +72,7 @@ class DemoSession extends ChangeNotifier {
   }
 
   void showError(Object error) {
-    if (isAiliaLicenseError(error)) _licenseErrorCount++;
+    if (!_disposed) showAiliaLicenseError(error);
     errorText = "$error";
     status = '';
     downloadProgress = null;
@@ -87,7 +86,7 @@ class DemoSession extends ChangeNotifier {
     processing = true;
     notifyListeners();
     try {
-      await checkAiliaLicense();
+      await AiliaLicense.checkAndDownloadLicense();
       await body();
     } catch (e) {
       showError(e);
@@ -215,12 +214,7 @@ class DemoPageScaffold extends StatelessWidget {
   final ScrollController? scrollController;
 
   @override
-  Widget build(BuildContext context) => LicenseErrorListener(
-        session: session,
-        child: _buildScaffold(context),
-      );
-
-  Widget _buildScaffold(BuildContext context) {
+  Widget build(BuildContext context) {
     final color = categoryColor(context, model.category);
     return Scaffold(
       appBar: AppBar(
@@ -343,86 +337,6 @@ class DemoPageScaffold extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Shows one dialog for a license failure, including errors forwarded from an
-/// isolate. Status/progress notifications must not open additional dialogs.
-class LicenseErrorListener extends StatefulWidget {
-  const LicenseErrorListener({
-    super.key,
-    required this.session,
-    required this.child,
-  });
-
-  final DemoSession session;
-  final Widget child;
-
-  @override
-  State<LicenseErrorListener> createState() => _LicenseErrorListenerState();
-}
-
-class _LicenseErrorListenerState extends State<LicenseErrorListener> {
-  int _handled = 0;
-  bool _showing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.session.addListener(_onChange);
-    _onChange();
-  }
-
-  @override
-  void didUpdateWidget(LicenseErrorListener oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.session != widget.session) {
-      oldWidget.session.removeListener(_onChange);
-      _handled = 0;
-      widget.session.addListener(_onChange);
-      _onChange();
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.session.removeListener(_onChange);
-    super.dispose();
-  }
-
-  void _onChange() {
-    final count = widget.session.licenseErrorCount;
-    if (_handled == count) return;
-    _handled = count;
-    if (_showing) return;
-    _showing = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || ModalRoute.of(context)?.isCurrent != true) {
-        _showing = false;
-        return;
-      }
-      try {
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('ライセンスエラー'),
-            content: const Text('ライセンスファイルが見つかりません'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      } finally {
-        _showing = false;
-      }
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
 }
 
 /// The Run / Stop button shared by the demo pages. Disabled while a

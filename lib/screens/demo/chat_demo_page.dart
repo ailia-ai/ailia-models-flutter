@@ -1,10 +1,10 @@
+import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/large_language_model.dart';
 import '../../model_catalog.dart';
-import '../../sdk_status.dart';
 import 'chat_bubble.dart';
 import 'demo_session.dart';
 
@@ -70,7 +70,7 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
         _messages.clear();
       });
     }
-    await checkAiliaLicense();
+    await AiliaLicense.checkAndDownloadLicense();
     final llm = LargeLanguageModel();
     final modelList = llm.getModelList(widget.model.id);
     final url =

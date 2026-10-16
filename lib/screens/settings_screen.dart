@@ -22,7 +22,7 @@ class SettingsScreen extends StatelessWidget {
             ),
             ListTile(
               title: const Text('ライセンス期日'),
-              subtitle: SelectableText(status.license?.label ?? '確認中…'),
+              subtitle: SelectableText(status.expiry),
             ),
           ],
         ),

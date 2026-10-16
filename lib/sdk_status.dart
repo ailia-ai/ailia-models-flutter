@@ -7,82 +7,20 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
-/// SDK exceptions are also forwarded as strings by the inference workers.
-bool isAiliaLicenseError(Object error) {
-  final text = error.toString();
-  if (text == 'Exception: License file download failed') return true;
-  if (RegExp(
-    r'\bAILIA_STATUS_LICENSE_(NOT_FOUND|BROKEN|EXPIRED)\b',
-  ).hasMatch(text)) {
-    return true;
+// Read only the expiry line; license validation is left to the SDK.
+String licenseExpiry(String? contents) {
+  if (contents == null) return 'ファイルなし';
+  final normalized = contents.replaceAll('\r\n', '\n');
+  if (!normalized.startsWith(AiliaLicense.licenseFileFormat)) {
+    return '取得できません';
   }
-  final matches = RegExp(
-    r'\b(?:ailia\w+|SetPromptJson|GetResponseJson(?:Size)?)\b[^\r\n]*?'
-    r'\b(?:failed|status|error|returned)\s*:?\s*(-\d+)\b',
-    caseSensitive: false,
-  ).allMatches(text);
-  return matches.any(
-    (match) => const {
-      ailia.AILIA_STATUS_LICENSE_NOT_FOUND,
-      ailia.AILIA_STATUS_LICENSE_BROKEN,
-      ailia.AILIA_STATUS_LICENSE_EXPIRED,
-    }.contains(int.tryParse(match.group(1)!)),
-  );
+  return RegExp(
+        r'\d{4}/\d{2}/\d{2}',
+      ).firstMatch(normalized.split('\n')[2])?.group(0) ??
+      '取得できません';
 }
 
-enum LicenseState { valid, expired, missing, invalid, perpetual, unavailable }
-
-class LicenseInfo {
-  const LicenseInfo(this.state, [this.expiry]);
-
-  final LicenseState state;
-  final DateTime? expiry;
-
-  /// Read the same header/date line that AiliaLicense validates. Never expose
-  /// the remaining license contents (signature and user data) in the UI.
-  factory LicenseInfo.parse(String? contents, {DateTime? now}) {
-    if (contents == null) return const LicenseInfo(LicenseState.missing);
-    final normalized = contents.replaceAll('\r\n', '\n');
-    if (!normalized.startsWith(AiliaLicense.licenseFileFormat)) {
-      return const LicenseInfo(LicenseState.invalid);
-    }
-    final line = normalized.split('\n')[2];
-    final match = RegExp(r'(\d{4})/(\d{2})/(\d{2})').firstMatch(line);
-    if (match == null) return const LicenseInfo(LicenseState.invalid);
-    final year = int.parse(match[1]!);
-    final month = int.parse(match[2]!);
-    final day = int.parse(match[3]!);
-    final expiry = DateTime(year, month, day, 23, 59, 59);
-    if (expiry.year != year || expiry.month != month || expiry.day != day) {
-      return const LicenseInfo(LicenseState.invalid);
-    }
-    return LicenseInfo(
-      (now ?? DateTime.now()).isAfter(expiry)
-          ? LicenseState.expired
-          : LicenseState.valid,
-      expiry,
-    );
-  }
-
-  String get label {
-    final date = expiry;
-    if (date != null) {
-      final formatted =
-          '${date.year.toString().padLeft(4, '0')}/'
-          '${date.month.toString().padLeft(2, '0')}/'
-          '${date.day.toString().padLeft(2, '0')}';
-      return state == LicenseState.expired ? '$formatted（期限切れ）' : formatted;
-    }
-    return switch (state) {
-      LicenseState.perpetual => '無期限',
-      LicenseState.missing => 'ファイルなし',
-      LicenseState.invalid => 'ファイルが無効です',
-      _ => '取得できません',
-    };
-  }
-}
-
-/// The native SDK version and the license used by AiliaLicense on this platform.
+/// Read-only information for the title bar. No license checks or downloads.
 class SdkStatus extends ChangeNotifier {
   SdkStatus({
     String Function()? readVersion,
@@ -94,53 +32,37 @@ class SdkStatus extends ChangeNotifier {
   final String Function() _readVersion;
   final Future<String?> Function() _readLicense;
   String? version;
-  LicenseInfo? license;
-  Future<void>? _refreshing;
+  String expiry = '確認中…';
 
   Future<void> refresh() async {
-    final pending = _refreshing;
-    if (pending != null) return pending;
-    final future = _load();
-    _refreshing = future;
-    try {
-      await future;
-    } finally {
-      _refreshing = null;
-    }
-  }
-
-  Future<void> _load() async {
     try {
       version = _readVersion();
     } catch (_) {
-      // An unavailable native library must not prevent the home screen opening.
       version = null;
     }
     if (version?.contains('perpetual_license') == true) {
-      license = const LicenseInfo(LicenseState.perpetual);
+      expiry = '無期限';
     } else {
       try {
-        license = LicenseInfo.parse(await _readLicense());
+        expiry = licenseExpiry(await _readLicense());
       } catch (_) {
-        license = const LicenseInfo(LicenseState.unavailable);
+        expiry = '取得できません';
       }
     }
     notifyListeners();
   }
 
   static String _nativeVersion() {
-    final DynamicLibrary library;
-    if (Platform.isIOS) {
-      library = DynamicLibrary.process();
-    } else {
-      final name = Platform.isWindows
-          ? 'ailia.dll'
-          : Platform.isMacOS
-          ? 'libailia.dylib'
-          : 'libailia.so';
-      library = DynamicLibrary.open(name);
-    }
-    // ailiaGetVersion returns a borrowed, null-terminated string.
+    final library = Platform.isIOS
+        ? DynamicLibrary.process()
+        : DynamicLibrary.open(
+            Platform.isWindows
+                ? 'ailia.dll'
+                : Platform.isMacOS
+                ? 'libailia.dylib'
+                : 'libailia.so',
+          );
+    // This pointer is owned by the SDK.
     return ailia
         .ailiaFFI(library)
         .ailiaGetVersion()
@@ -149,8 +71,7 @@ class SdkStatus extends ChangeNotifier {
   }
 
   static Future<String?> _licenseContents() async {
-    // Keep this in sync with AiliaLicense._getLicenseFolderPath(). Reading the
-    // status does not download a license or create directories.
+    // Use the same location as AiliaLicense, without creating or updating files.
     final home = Platform.environment['HOME'];
     final folder = Platform.isMacOS
         ? p.join(home!, 'Library', 'SHALO')
@@ -159,14 +80,5 @@ class SdkStatus extends ChangeNotifier {
         : Directory.current.path;
     final file = File(p.join(folder, 'AILIA.lic'));
     return await file.exists() ? file.readAsString() : null;
-  }
-}
-
-/// Refresh the title bar after the SDK has checked or renewed the license.
-Future<void> checkAiliaLicense() async {
-  try {
-    await AiliaLicense.checkAndDownloadLicense();
-  } finally {
-    await SdkStatus.instance.refresh();
   }
 }
