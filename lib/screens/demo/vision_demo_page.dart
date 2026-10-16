@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:ailia/ailia_license.dart';
 import 'package:ailia/ailia_model.dart' show AiliaDetectorObject;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +16,7 @@ import '../../object_detection/detic.dart';
 import '../../object_detection/yolox.dart';
 import '../../object_tracking/bytetrack.dart';
 import '../../pose_estimation/lw_human_pose.dart';
+import '../../sdk_status.dart';
 import '../../utils/image_util.dart';
 import 'camera_input.dart';
 import 'demo_session.dart';
@@ -874,7 +874,7 @@ class _VisionDemoPageState extends State<VisionDemoPage>
       _clearRealtimeResults();
     });
     try {
-      await AiliaLicense.checkAndDownloadLicense();
+      await checkAiliaLicense();
       await _camera.startFrameStream();
       switch (widget.model.id) {
         case "yolox":

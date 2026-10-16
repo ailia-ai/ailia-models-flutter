@@ -1,4 +1,3 @@
-import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
@@ -6,6 +5,7 @@ import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/tool_use_model.dart';
 import '../../large_language_model/tool_use_worker.dart';
 import '../../model_catalog.dart';
+import '../../sdk_status.dart';
 import 'chat_bubble.dart';
 import 'demo_session.dart';
 
@@ -58,7 +58,7 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
       _messages.clear();
       _temperature = null;
     }
-    await AiliaLicense.checkAndDownloadLicense();
+    await checkAiliaLicense();
     if (!mounted || _cancelled) return;
     final file = await _session.downloadFile(
         'https://storage.googleapis.com/ailia-models/gemma/${ToolUseModel.modelFile}',
