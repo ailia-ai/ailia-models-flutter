@@ -11,7 +11,10 @@ class FakeMediaModel extends AiliaLLMModel {
   int opens = 0;
   String? next;
   bool endless = false;
-  bool textPromptSet = false;
+  bool full = false;
+
+  @override
+  bool contextFull() => full;
 
   @override
   void open(String path, int nCtx, {String backend = 'CPU'}) {
@@ -28,30 +31,20 @@ class FakeMediaModel extends AiliaLLMModel {
   @override
   void setPrompt(List<Map<String, dynamic>> messages) {
     if (messages.isEmpty) throw StateError('Empty prompts are unsupported');
-    if (messages.length == 1 &&
-        messages.single['role'] == 'user' &&
-        messages.single['content'] == '.' &&
-        !messages.single.containsKey('media_data')) {
-      textPromptSet = true;
-      next = null;
-      endless = false;
-      events.send({'type': 'textPromptSet'});
-      return;
-    }
-    if (!textPromptSet) throw StateError('Text prompt was not set first');
-    textPromptSet = false;
     events.send({'type': 'promptSet'});
-    if (messages.last['content'] == 'fail <__media__>') {
+    if ((messages.last['content'] as String).contains('fail')) {
       throw StateError('Failed prompt');
     }
-    final media = (messages.last['media_data'] as List).single as Map;
-    endless = media['file_path'] == 'endless';
-    next = '$opens:${messages.length}:${media['file_path']}';
+    final media = (messages.last['media_data'] as List?)?.single as Map?;
+    final path = media?['file_path'] ?? 'text';
+    endless = path == 'endless';
+    // Ask for a context reset on the next turn when requested.
+    full = (messages.last['content'] as String).contains('fill');
+    next = '$opens:${messages.length}:$path';
   }
 
   @override
   String? generate() {
-    if (textPromptSet) throw StateError('Do not generate from the text reset');
     if (endless) return 'token';
     final result = next;
     next = null;
@@ -80,25 +73,43 @@ Map<String, dynamic> request({String media = 'image', String path = 'first'}) =>
 
 void main() {
   for (final media in ['image', 'audio']) {
-    test('$media sets valid text before every media prompt for the same path',
+    test('$media keeps the conversation and accepts text-only follow-ups',
         () async {
       final worker = MultimodalWorker(entryPoint: fakeWorker);
       addTearDown(worker.cancel);
-      for (var run = 0; run < 2; run++) {
-        final events = <String>[];
-        expect(
-            await worker.run(request(media: media), onEvent: (event) {
-              events.add(event['type'] as String);
-            }),
-            '1:1:first');
-        expect(events.where((e) => e == 'textPromptSet' || e == 'promptSet'),
-            ['textPromptSet', 'promptSet']);
-      }
+      final events = <String>[];
+      void onEvent(Map event) => events.add(event['type'] as String);
+      expect(await worker.run(request(media: media), onEvent: onEvent),
+          '1:1:first');
+      // user + assistant from the first turn, then the new user turn.
+      expect(await worker.run(request(media: media), onEvent: onEvent),
+          '1:3:first');
+      expect(
+          await worker.run(request(media: media)..['mediaPath'] = null,
+              onEvent: onEvent),
+          '1:5:text');
+      expect(events.where((e) => e == 'promptSet'), hasLength(3));
+      expect(events, isNot(contains('historyReset')));
+      expect(
+          await worker.run(request(media: media)..['resetHistory'] = true,
+              onEvent: onEvent),
+          '1:1:first');
+      expect(events, contains('historyReset'));
     });
   }
 
-  test('image and audio reuse the model and replace the previous prompt',
-      () async {
+  test('a full context starts a new conversation on the next turn', () async {
+    final worker = MultimodalWorker(entryPoint: fakeWorker);
+    addTearDown(worker.cancel);
+    final events = <String>[];
+    void onEvent(Map event) => events.add(event['type'] as String);
+    await worker.run(request()..['inputText'] = 'fill', onEvent: onEvent);
+    expect(events, isNot(contains('historyReset')));
+    expect(await worker.run(request(), onEvent: onEvent), '1:1:first');
+    expect(events, contains('historyReset'));
+  });
+
+  test('image and audio reuse the model within one conversation', () async {
     final worker = MultimodalWorker(entryPoint: fakeWorker);
     addTearDown(worker.cancel);
     final events = <String>[];
@@ -109,14 +120,21 @@ void main() {
     expect(events.where((e) => e == 'metrics'), hasLength(1));
     events.clear();
     expect(await worker.run(request(path: 'second'), onEvent: onEvent),
-        '1:1:second');
+        '1:3:second');
     expect(
         await worker.run(request(media: 'audio', path: 'audio'),
             onEvent: onEvent),
-        '1:1:audio');
+        '1:5:audio');
     expect(events, isNot(contains('loading')));
     expect(events.where((e) => e == 'ready'), hasLength(2));
     expect(events.where((e) => e == 'metrics'), hasLength(2));
+  });
+
+  test('reloading the model starts a new conversation', () async {
+    final worker = MultimodalWorker(entryPoint: fakeWorker);
+    addTearDown(worker.cancel);
+    expect(await worker.run(request()), '1:1:first');
+    expect(await worker.run(request()..['backend'] = 'Metal'), '2:1:first');
   });
 
   test('reloads for every model configuration change', () async {

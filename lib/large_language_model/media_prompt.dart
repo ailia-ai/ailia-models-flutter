@@ -5,7 +5,9 @@ Map<String, dynamic> mediaPromptMessage(
   }
   return {
     'role': 'user',
-    'content': '$text <__media__>',
+    // Gemma 4 works best with images before the text and audio after it.
+    'content':
+        mediaType == 'image' ? '<__media__>\n$text' : '$text <__media__>',
     'media_data': [
       {
         'media_type': mediaType,

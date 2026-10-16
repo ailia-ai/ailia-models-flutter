@@ -7,6 +7,19 @@ import '../../utils/download_model.dart';
 import 'demo_session.dart';
 import 'waveform_view.dart';
 
+/// GPT-SoVITS V2Pro variants selectable in the demo.
+enum _V2ProVariant {
+  normal('Normal', TextToSpeech.MODEL_TYPE_GPT_SOVITS_V2_PRO_JA),
+  distillSmall('Distill Small',
+      TextToSpeech.MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_SMALL_JA),
+  distillBase('Distill Base',
+      TextToSpeech.MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_BASE_JA);
+
+  const _V2ProVariant(this.label, this.modelType);
+  final String label;
+  final int modelType;
+}
+
 /// Text-to-speech demos (Tacotron2 and GPT-SoVITS). The synthesized
 /// audio plays immediately and streams into the waveform display; the
 /// last output can be replayed without re-synthesizing.
@@ -35,6 +48,9 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
   String? _lastTtsPath;
   int _runCounter = 0;
 
+  bool get _isV2Pro => widget.model.id == "gpt-sovits-v2pro-ja";
+  _V2ProVariant _v2ProVariant = _V2ProVariant.normal;
+
   int get _modelType {
     switch (widget.model.id) {
       case "gpt-sovits-ja":
@@ -43,8 +59,8 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
         return TextToSpeech.MODEL_TYPE_GPT_SOVITS_EN;
       case "gpt-sovits-zh":
         return TextToSpeech.MODEL_TYPE_GPT_SOVITS_ZH;
-      case "gpt-sovits-v2pro-distill-ja":
-        return TextToSpeech.MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_JA;
+      case "gpt-sovits-v2pro-ja":
+        return _v2ProVariant.modelType;
       default:
         return TextToSpeech.MODEL_TYPE_TACOTRON2;
     }
@@ -150,12 +166,36 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
     );
   }
 
+  /// Normal / Distill Small / Distill Base selector for GPT-SoVITS V2Pro.
+  /// A change reopens the model on the next run.
+  Widget _buildV2ProSelector() {
+    return ListenableBuilder(
+      listenable: _session,
+      builder: (context, _) => SegmentedButton<_V2ProVariant>(
+        segments: [
+          for (final variant in _V2ProVariant.values)
+            ButtonSegment(value: variant, label: Text(variant.label)),
+        ],
+        selected: {_v2ProVariant},
+        onSelectionChanged: _session.processing
+            ? null
+            : (selection) => safeSetState(() {
+                  _v2ProVariant = selection.first;
+                }),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DemoPageScaffold(
       model: widget.model,
       session: _session,
       children: [
+        if (_isV2Pro) ...[
+          _buildV2ProSelector(),
+          const SizedBox(height: 8),
+        ],
         WaveformView(controller: _waveform),
         _buildTextField(),
         DemoRunButton(session: _session, onPressed: _run),

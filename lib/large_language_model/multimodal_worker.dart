@@ -6,7 +6,7 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 import 'generation_metrics.dart';
 import 'media_prompt.dart';
 
-/// Keeps the native model and projector alive across independent media queries.
+/// Keeps the native model, projector and conversation alive across turns.
 class MultimodalWorker {
   MultimodalWorker({this.entryPoint = runMultimodalWorker});
 
@@ -99,6 +99,9 @@ void runMultimodalWorker(SendPort events,
   final commands = ReceivePort();
   final model = (modelFactory ?? AiliaLLMModel.new)();
   (String, String, String, int)? loaded;
+  // Conversation so far (user turns with optional media, assistant replies),
+  // resent on every turn so the SDK can keep the shared KV cache prefix.
+  final history = <Map<String, dynamic>>[];
   var busy = false;
   var closing = false;
 
@@ -131,6 +134,8 @@ void runMultimodalWorker(SendPort events,
       if (loaded != key) {
         model.close();
         loaded = null;
+        // A reopened model starts a new conversation.
+        history.clear();
         events.send({'type': 'loading'});
         final backends = (backendList ?? AiliaLLMModel.getBackendList)();
         if (!backends.contains(key.$3)) {
@@ -140,25 +145,37 @@ void runMultimodalWorker(SendPort events,
         model.openMultimodalProjectorFile(key.$2);
         loaded = key;
       }
-      final mediaType = request['mediaType'] as String;
-      final capability = mediaType == 'audio' ? 'audio' : 'vision';
-      if (model.getMultimodalCapabilities()[capability] != true) {
-        throw StateError('$capability capabilities not available');
+      // Text-only follow-up turns carry no media.
+      final mediaPath = request['mediaPath'] as String?;
+      final mediaType = request['mediaType'] as String?;
+      if (mediaPath != null) {
+        final capability = mediaType == 'audio' ? 'audio' : 'vision';
+        if (model.getMultimodalCapabilities()[capability] != true) {
+          throw StateError('$capability capabilities not available');
+        }
+      }
+      if (request['resetHistory'] == true || model.contextFull()) {
+        if (history.isNotEmpty) events.send({'type': 'historyReset'});
+        history.clear();
       }
       events.send({'type': 'ready'});
-      // Each run supplies a fresh prompt; prior media and answers are omitted.
       final timing = GenerationMetrics()..start();
-      // Replace the previous media prompt with valid text before the next input.
-      // Empty prompts are rejected by the native SDK; do not generate here.
-      model.setPrompt([
-        {'role': 'user', 'content': '.'},
-      ]);
-      model.setPrompt(mediaPromptMessages(
-        systemPrompt: request['systemPrompt'] as String,
-        inputText: request['inputText'] as String,
-        mediaPath: request['mediaPath'] as String,
-        mediaType: mediaType,
-      ));
+      final inputText = request['inputText'] as String;
+      final user = mediaPath == null
+          ? {'role': 'user', 'content': inputText}
+          : mediaPromptMessage(inputText, mediaPath, mediaType!);
+      final systemPrompt = request['systemPrompt'] as String;
+      history.add(user);
+      try {
+        model.setPrompt([
+          if (systemPrompt.isNotEmpty)
+            {'role': 'system', 'content': systemPrompt},
+          ...history,
+        ]);
+      } catch (_) {
+        history.removeLast();
+        rethrow;
+      }
       final text = StringBuffer();
       await Future<void>.delayed(Duration.zero);
       while (!closing) {
@@ -169,6 +186,7 @@ void runMultimodalWorker(SendPort events,
         events.send({'type': 'delta', 'text': delta});
         await Future<void>.delayed(Duration.zero);
       }
+      history.add({'role': 'assistant', 'content': text.toString()});
       if (!closing) {
         events.send({
           'type': 'metrics',
@@ -180,6 +198,7 @@ void runMultimodalWorker(SendPort events,
     } catch (error) {
       // A failed native operation must not leave a cached, unusable model.
       loaded = null;
+      history.clear();
       model.close();
       events.send({'type': 'error', 'message': '$error'});
     } finally {

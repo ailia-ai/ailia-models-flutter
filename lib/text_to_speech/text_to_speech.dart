@@ -40,20 +40,67 @@ class TextToSpeech {
   static const int MODEL_TYPE_GPT_SOVITS_JA = 1;
   static const int MODEL_TYPE_GPT_SOVITS_EN = 2;
   static const int MODEL_TYPE_GPT_SOVITS_ZH = 3;
-  static const int MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_JA = 4;
+  static const int MODEL_TYPE_GPT_SOVITS_V2_PRO_JA = 4;
+  static const int MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_SMALL_JA = 5;
+  static const int MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_BASE_JA = 6;
 
   int? _openedModelType;
   bool _referenceReady = false;
 
   bool _isGPTSoVITS(int modelType) {
-    return _isGPTSoVITSV1(modelType) ||
-        modelType == MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_JA;
+    return _isGPTSoVITSV1(modelType) || _v2ProFiles(modelType) != null;
+  }
+
+  /// Model files of the V2Pro models, relative to the model directory, in
+  /// open order: t2s encoder, first / stage decoders, cnhubert, vits, sv.
+  /// The distilled sizes swap the t2s models and the VITS model. Files
+  /// live under per-version folders so they do not clash with the V1
+  /// files of the same name. Returns null for other model types.
+  static List<String>? _v2ProFiles(int modelType) {
+    const v2Pro = "gpt-sovits-v2-pro";
+    const distill = "gpt-sovits-v2-pro-distill";
+    final size = switch (modelType) {
+      MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_SMALL_JA => "small",
+      MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_BASE_JA => "base",
+      _ => null,
+    };
+    if (size != null) {
+      return [
+        "$distill/t2s_encoder_distill_$size.onnx",
+        "$distill/t2s_fsdec_distill_$size.onnx",
+        "$distill/t2s_sdec_distill_$size.opt.onnx",
+        "$v2Pro/cnhubert.onnx",
+        "$distill/vits_distill_$size.onnx",
+        "$v2Pro/sv.onnx",
+      ];
+    }
+    if (modelType != MODEL_TYPE_GPT_SOVITS_V2_PRO_JA) return null;
+    // The Chinese BERT is only needed for Chinese text, so it is not used.
+    return [
+      "$v2Pro/t2s_encoder.onnx",
+      "$v2Pro/t2s_fsdec.onnx",
+      "$v2Pro/t2s_sdec.opt.onnx",
+      "$v2Pro/cnhubert.onnx",
+      "$v2Pro/vits.onnx",
+      "$v2Pro/sv.onnx",
+    ];
   }
 
   bool _isGPTSoVITSV1(int modelType) {
     return modelType == MODEL_TYPE_GPT_SOVITS_JA ||
         modelType == MODEL_TYPE_GPT_SOVITS_EN ||
         modelType == MODEL_TYPE_GPT_SOVITS_ZH;
+  }
+
+  /// Whether [text] is English: it has Latin letters and no Japanese,
+  /// Chinese or Korean characters (kana, CJK ideographs, hangul or
+  /// full-width forms). The V2Pro models read such text with the English
+  /// G2P; mixed text keeps the Japanese one.
+  static bool isEnglishText(String text) {
+    if (!RegExp(r'[A-Za-z]').hasMatch(text)) return false;
+    return !RegExp(r'[\u3000-\u30FF\u3400-\u4DBF\u4E00-\u9FFF'
+            r'\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF]')
+        .hasMatch(text);
   }
 
   List<String> getModelList(int modelType) {
@@ -88,8 +135,10 @@ class TextToSpeech {
       modelList.add("open_jtalk_dic_utf_8-1.11/unk.dic");
     }
 
+    // V2Pro reads English input text with the English G2P.
     if (modelType == MODEL_TYPE_GPT_SOVITS_EN ||
-        modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
+        modelType == MODEL_TYPE_GPT_SOVITS_ZH ||
+        _v2ProFiles(modelType) != null) {
       modelList.add("g2p_en");
       modelList.add("averaged_perceptron_tagger_classes.txt");
 
@@ -167,28 +216,13 @@ class TextToSpeech {
       modelList.add("cnhubert.onnx");
     }
 
-    if (modelType == MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_JA) {
-      // The distilled text-to-semantic models plus the V2Pro common
-      // models (stored under per-version folders so they do not clash
-      // with the V1 files of the same name).
-      modelList.add("gpt-sovits-v2-pro-distill");
-      modelList.add("gpt-sovits-v2-pro-distill/t2s_encoder_distill_small.onnx");
-
-      modelList.add("gpt-sovits-v2-pro-distill");
-      modelList.add("gpt-sovits-v2-pro-distill/t2s_fsdec_distill_small.onnx");
-
-      modelList.add("gpt-sovits-v2-pro-distill");
-      modelList
-          .add("gpt-sovits-v2-pro-distill/t2s_sdec_distill_small.opt.onnx");
-
-      modelList.add("gpt-sovits-v2-pro");
-      modelList.add("gpt-sovits-v2-pro/cnhubert.onnx");
-
-      modelList.add("gpt-sovits-v2-pro");
-      modelList.add("gpt-sovits-v2-pro/vits.onnx");
-
-      modelList.add("gpt-sovits-v2-pro");
-      modelList.add("gpt-sovits-v2-pro/sv.onnx");
+    final v2ProFiles = _v2ProFiles(modelType);
+    if (v2ProFiles != null) {
+      for (final file in v2ProFiles) {
+        // The download folder on the server matches the local folder.
+        modelList.add(file.substring(0, file.indexOf('/')));
+        modelList.add(file);
+      }
     }
 
     return modelList;
@@ -213,17 +247,15 @@ class TextToSpeech {
           ailia_voice_dart.AILIA_VOICE_MODEL_TYPE_TACOTRON2,
           ailia_voice_dart.AILIA_VOICE_CLEANER_TYPE_BASIC,
           ailia_voice_dart.AILIA_ENVIRONMENT_ID_AUTO);
-    } else if (modelType == MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_JA) {
+    } else if (_v2ProFiles(modelType) case final v2ProFiles?) {
+      final files = [for (final file in v2ProFiles) await getModelPath(file)];
       _ailiaVoiceModel.openGPTSoVITSV2ProModel(
-          await getModelPath(
-              "gpt-sovits-v2-pro-distill/t2s_encoder_distill_small.onnx"),
-          await getModelPath(
-              "gpt-sovits-v2-pro-distill/t2s_fsdec_distill_small.onnx"),
-          await getModelPath(
-              "gpt-sovits-v2-pro-distill/t2s_sdec_distill_small.opt.onnx"),
-          await getModelPath("gpt-sovits-v2-pro/cnhubert.onnx"),
-          await getModelPath("gpt-sovits-v2-pro/vits.onnx"),
-          await getModelPath("gpt-sovits-v2-pro/sv.onnx"),
+          files[0],
+          files[1],
+          files[2],
+          files[3],
+          files[4],
+          files[5],
           null,
           null,
           ailia_voice_dart.AILIA_ENVIRONMENT_ID_AUTO);
@@ -245,9 +277,10 @@ class TextToSpeech {
           ailia_voice_dart.AILIA_VOICE_DICTIONARY_TYPE_OPEN_JTALK);
     }
     // The English and Chinese G2P dictionary files are downloaded flat
-    // into the model root.
+    // into the model root. V2Pro needs the English one for English input.
     if (modelType == MODEL_TYPE_GPT_SOVITS_EN ||
-        modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
+        modelType == MODEL_TYPE_GPT_SOVITS_ZH ||
+        _v2ProFiles(modelType) != null) {
       _ailiaVoiceModel.openDictionary(await getModelPath("/"),
           ailia_voice_dart.AILIA_VOICE_DICTIONARY_TYPE_G2P_EN);
     }
@@ -265,6 +298,12 @@ class TextToSpeech {
   /// and skip SetReference for speed.
   Future<void> inference(
       String targetText, String outputPath, int modelType) async {
+    final audio = await synthesize(targetText, modelType);
+    _speaker.play(audio, outputPath);
+  }
+
+  /// Synthesizes [targetText] without playing it.
+  Future<AiliaVoiceResult> synthesize(String targetText, int modelType) async {
     await open(modelType);
 
     if (_isGPTSoVITS(modelType) && !_referenceReady) {
@@ -290,21 +329,22 @@ class TextToSpeech {
     }
 
     String targetFeature = targetText;
-    if (modelType == MODEL_TYPE_GPT_SOVITS_JA ||
-        modelType == MODEL_TYPE_GPT_SOVITS_V2_PRO_DISTILL_JA) {
-      targetFeature = _ailiaVoiceModel.g2p(
-          targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA);
-    }
-    if (modelType == MODEL_TYPE_GPT_SOVITS_EN) {
+    if (_v2ProFiles(modelType) != null && isEnglishText(targetText)) {
+      // V2Pro (JA/EN) switches to the English G2P for English input.
       targetFeature = _ailiaVoiceModel.g2p(
           targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_EN);
-    }
-    if (modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
+    } else if (modelType == MODEL_TYPE_GPT_SOVITS_JA ||
+        _v2ProFiles(modelType) != null) {
+      targetFeature = _ailiaVoiceModel.g2p(
+          targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA);
+    } else if (modelType == MODEL_TYPE_GPT_SOVITS_EN) {
+      targetFeature = _ailiaVoiceModel.g2p(
+          targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_EN);
+    } else if (modelType == MODEL_TYPE_GPT_SOVITS_ZH) {
       targetFeature = _ailiaVoiceModel.g2p(
           targetText, ailia_voice_dart.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_ZH);
     }
-    final audio = _ailiaVoiceModel.inference(targetFeature);
-    _speaker.play(audio, outputPath);
+    return _ailiaVoiceModel.inference(targetFeature);
   }
 
   /// Releases the model; the next run reopens it.
