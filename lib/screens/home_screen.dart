@@ -41,9 +41,7 @@ const Map<String, String> _markerFiles = {
 /// Top screen: model cards grouped by category. Selecting a card
 /// navigates to the demo screen for that model.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.status});
-
-  final SdkStatus? status;
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -51,7 +49,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   Set<String> _downloaded = {};
-  SdkStatus get _status => widget.status ?? SdkStatus.instance;
 
   @override
   void initState() {
@@ -79,7 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refreshDownloaded() async {
-    await _status.refresh();
+    await SdkStatus.instance.refresh();
     // Resolve the model directory once instead of a platform-channel
     // round trip per model.
     final base = await getModelPath('');
@@ -107,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('ailia MODELS Flutter'),
-        actions: [SdkStatusActions(status: _status)],
+        actions: const [SdkStatusActions()],
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
