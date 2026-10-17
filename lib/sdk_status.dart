@@ -34,8 +34,13 @@ class SdkStatus extends ChangeNotifier {
   String get version => _readVersion();
   String expiry = 'Loading...';
 
+  /// Perpetual licenses and development builds of the SDK do not expire.
+  static bool isPerpetual(String version) =>
+      version.contains('perpetual_license') ||
+      version.toLowerCase().contains('develop');
+
   Future<void> refresh() async {
-    if (version.contains('perpetual_license')) {
+    if (isPerpetual(version)) {
       expiry = 'Perpetual';
     } else {
       expiry = licenseExpiry(await _readLicense());

@@ -9,11 +9,14 @@ import 'package:record/record.dart';
 import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
+import '../../large_language_model/mtp.dart';
+import '../../large_language_model/qnn_model.dart';
 import '../../large_language_model/recorded_wav.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
 import 'chat_bubble.dart';
 import 'demo_session.dart';
+import 'mtp_switch.dart';
 import 'waveform_view.dart';
 
 /// Chats with Gemma 4 about local microphone recordings: the recording is
@@ -27,7 +30,8 @@ class AlmDemoPage extends StatefulWidget {
   State<AlmDemoPage> createState() => _AlmDemoPageState();
 }
 
-class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
+class _AlmDemoPageState extends State<AlmDemoPage>
+    with SafeSetStateMixin, MtpToggleMixin {
   final DemoSession _session = DemoSession();
   final MultimodalLargeLanguageModel _alm = MultimodalLargeLanguageModel();
   final AudioRecorder _recorder = AudioRecorder();
@@ -38,9 +42,9 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
   final ScrollController _scrollController = ScrollController();
   final List<ChatTurn> _turns = [];
 
-  /// Backend the conversation runs on; a change reopens the model, which
-  /// starts a new conversation.
-  String? _conversationBackend;
+  /// Backend / MTP the conversation runs on; a change reopens the model,
+  /// which starts a new conversation.
+  (String, bool)? _conversationConfig;
   StreamSubscription<Amplitude>? _amplitude;
 
   /// Latest recording. It is attached to the first message of every
@@ -194,14 +198,16 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
     await _session.run(() async {
       if (!mounted) return;
       try {
-        final files = _alm.getModelList(widget.model.id);
+        final files = _alm.getModelList(widget.model.id, backend, mtp);
         if (!await _session.downloadModelList(files) || !mounted) return;
         final modelFile = File(await getModelPath(files[1]));
         final mmprojFile = File(await getModelPath(files[3]));
+        final useMtp = files.length > 4;
+        final mtpFile = useMtp ? File(await getModelPath(files[5])) : null;
         if (!mounted) return;
-        if (_conversationBackend != backend) {
+        if (_conversationConfig != (backend, useMtp)) {
           // The model is reopened, so the conversation starts over.
-          _conversationBackend = backend;
+          _conversationConfig = (backend, useMtp);
           _alm.clearHistory();
           _turns.clear();
         }
@@ -220,18 +226,22 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
         int lastPaint = 0;
         double? ttftMs;
         double? tps;
+        String? mtpError;
         try {
           reply.text = await _alm.chatWithAudioIsolate(
               model: modelFile,
               mmproj: mmprojFile,
               backend: backend,
-              nCtx: MultimodalLargeLanguageModel.contextSize(widget.model.id),
+              nCtx: MultimodalLargeLanguageModel.contextSize(
+                  widget.model.id, modelFile.path, backend),
               systemPrompt: '',
               inputText: query,
               audioPath: audio?.path,
+              mtpAssistant: mtpFile,
               onModelLoading: () =>
                   _session.setStatus('Loading audio model...'),
-              onModelLoaded: () {
+              onModelLoaded: (error) {
+                mtpError = error;
                 _session.setStatus(
                     audio == null ? 'Generating...' : 'Audio Processing...');
               },
@@ -256,7 +266,7 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
           // A failed turn closes the model and its conversation; the next
           // message sends the recording again.
           _session.clearStatus();
-          _conversationBackend = null;
+          _conversationConfig = null;
           safeSetState(_turns.clear);
           rethrow;
         }
@@ -267,7 +277,8 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
           _session
               .showResult('processing time : ${watch.elapsedMilliseconds} ms\n'
                   'TTFT: ${formatTtft(ttftMs)}\n'
-                  'TPS: ${formatTps(tps)} tokens/s');
+                  'TPS: ${formatTps(tps)} tokens/s\n'
+                  '${mtpStatusText(requested: useMtp, error: mtpError)}');
         }
       } finally {
         if (!mounted) {
@@ -328,6 +339,20 @@ class _AlmDemoPageState extends State<AlmDemoPage> with SafeSetStateMixin {
                         label: 'Audio query',
                         enabled: !_session.processing,
                         onSend: _canSend ? _send : null,
+                        trailing: [
+                          if (supportsMtp(widget.model.id)) ...[
+                            const SizedBox(width: 12),
+                            MtpSwitch(
+                              value: mtp,
+                              available: mtpAvailableFor(widget.model.id),
+                              onChanged: _session.processing
+                                  ? null
+                                  : (value) => safeSetState(() {
+                                        mtp = value;
+                                      }),
+                            ),
+                          ],
+                        ],
                       ),
                     ]),
                   )),

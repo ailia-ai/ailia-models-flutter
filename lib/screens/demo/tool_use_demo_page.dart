@@ -2,12 +2,16 @@ import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/qnn_model.dart';
+import '../../large_language_model/qnn_runtime.dart';
 import '../../large_language_model/generation_metrics.dart';
+import '../../large_language_model/mtp.dart';
 import '../../large_language_model/tool_use_model.dart';
 import '../../large_language_model/tool_use_worker.dart';
 import '../../model_catalog.dart';
 import 'chat_bubble.dart';
 import 'demo_session.dart';
+import 'mtp_switch.dart';
 
 class ToolUseDemoPage extends StatefulWidget {
   const ToolUseDemoPage({super.key, required this.model});
@@ -18,13 +22,14 @@ class ToolUseDemoPage extends StatefulWidget {
 }
 
 class _ToolUseDemoPageState extends State<ToolUseDemoPage>
-    with SafeSetStateMixin {
+    with SafeSetStateMixin, MtpToggleMixin {
   final _session = DemoSession();
   final _input = TextEditingController(text: ToolUseModel.defaultPrompt);
   final _scroll = ScrollController();
   final _messages = <Map<String, String>>[];
   ToolUseWorker? _worker;
   String? _backend;
+  bool? _workerMtp;
   Map<String, String>? _assistant;
   bool _busy = false;
   bool _thinking = false;
@@ -51,31 +56,49 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
   }
 
   Future<void> _ensureModel(String backend) async {
-    if (_worker != null && _backend == backend) return;
+    final useMtp = mtp && mtpAvailable(widget.model.id, backend);
+    // The MTP assistant cannot be detached, so a change reopens the model.
+    if (_worker != null && _backend == backend && _workerMtp == useMtp) return;
     if (_worker != null) {
       _worker!.dispose();
       _worker = null;
       _messages.clear();
       _temperature = null;
     }
+    final files =
+        ToolUseModel.modelFiles(backend, soc: availableWindowsQnnSoc());
     await AiliaLicense.checkAndDownloadLicense();
     if (!mounted || _cancelled) return;
     final file = await _session.downloadFile(
-        'https://storage.googleapis.com/ailia-models/gemma/${ToolUseModel.modelFile}',
-        ToolUseModel.modelFile);
+        'https://storage.googleapis.com/ailia-models/${files[0]}/${files[1]}',
+        files[1]);
     if (!mounted || _cancelled) return;
     if (file == null) throw StateError('Model download failed');
+    String? mtpPath;
+    if (useMtp) {
+      final assistant =
+          ToolUseModel.mtpFiles(backend, soc: availableWindowsQnnSoc());
+      final assistantFile = await _session.downloadFile(
+          'https://storage.googleapis.com/ailia-models/${assistant[0]}/${assistant[1]}',
+          assistant[1]);
+      if (!mounted || _cancelled) return;
+      if (assistantFile == null) {
+        throw StateError('MTP model download failed');
+      }
+      mtpPath = assistantFile.path;
+    }
     _session.setStatus('Loading model...');
     final worker = ToolUseWorker();
     _worker = worker;
     try {
-      await worker.start(file.path, backend);
+      await worker.start(file.path, backend, mtpPath: mtpPath);
       if (!mounted || _cancelled) {
         worker.dispose();
         _worker = null;
         return;
       }
       _backend = backend;
+      _workerMtp = useMtp;
     } catch (_) {
       worker.dispose();
       _worker = null;
@@ -146,9 +169,10 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
       await _worker!.chat(text, _thinking, _event);
       _session.clearStatus();
       final tps = _decodeSeconds > 0 ? _decodeTokens / _decodeSeconds : null;
-      _session
-          .showResult('processing time : ${stopwatch.elapsedMilliseconds} ms\n'
-              'TPS: ${formatTps(tps)} tokens/s');
+      _session.showResult(
+          'processing time : ${stopwatch.elapsedMilliseconds} ms\n'
+          'TPS: ${formatTps(tps)} tokens/s\n'
+          '${mtpStatusText(requested: _workerMtp ?? false, error: _worker?.mtpError)}');
     } catch (error) {
       if (_assistant != null) {
         _messages.remove(_assistant);
@@ -196,6 +220,15 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
                       ? null
                       : (value) => safeSetState(() {
                             _thinking = value;
+                          })),
+              const SizedBox(width: 16),
+              MtpSwitch(
+                  value: mtp,
+                  available: mtpAvailableFor(widget.model.id),
+                  onChanged: _busy
+                      ? null
+                      : (value) => safeSetState(() {
+                            mtp = value;
                           })),
               const Spacer(),
               IconButton(

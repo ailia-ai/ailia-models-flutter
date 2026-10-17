@@ -5,6 +5,8 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 
 import 'generation_metrics.dart';
 import 'media_prompt.dart';
+import 'mtp.dart';
+import 'qnn_model.dart';
 
 /// Keeps the native model, projector and conversation alive across turns.
 class MultimodalWorker {
@@ -98,7 +100,8 @@ void runMultimodalWorker(SendPort events,
     List<String> Function()? backendList}) {
   final commands = ReceivePort();
   final model = (modelFactory ?? AiliaLLMModel.new)();
-  (String, String, String, int)? loaded;
+  (String, String, String, int, String)? loaded;
+  String? mtpError;
   // Conversation so far (user turns with optional media, assistant replies),
   // resent on every turn so the SDK can keep the shared KV cache prefix.
   final history = <Map<String, dynamic>>[];
@@ -130,6 +133,9 @@ void runMultimodalWorker(SendPort events,
         request['mmprojPath'] as String,
         request['backend'] as String,
         request['nCtx'] as int,
+        // Empty when MTP is off; the assistant cannot be detached, so a
+        // change reopens the model.
+        request['mtpPath'] as String? ?? '',
       );
       if (loaded != key) {
         model.close();
@@ -137,11 +143,15 @@ void runMultimodalWorker(SendPort events,
         // A reopened model starts a new conversation.
         history.clear();
         events.send({'type': 'loading'});
+        llmContextLength(key.$1, key.$3);
+        llmContextLength(key.$2, key.$3);
         final backends = (backendList ?? AiliaLLMModel.getBackendList)();
         if (!backends.contains(key.$3)) {
           throw StateError('Backend ${key.$3} not available: $backends');
         }
         model.open(key.$1, key.$4, backend: key.$3);
+        // The assistant must be opened before the projector.
+        mtpError = openMtpAssistant(model, key.$5);
         model.openMultimodalProjectorFile(key.$2);
         loaded = key;
       }
@@ -158,7 +168,7 @@ void runMultimodalWorker(SendPort events,
         if (history.isNotEmpty) events.send({'type': 'historyReset'});
         history.clear();
       }
-      events.send({'type': 'ready'});
+      events.send({'type': 'ready', 'mtpError': mtpError});
       final timing = GenerationMetrics()..start();
       final inputText = request['inputText'] as String;
       final user = mediaPath == null
