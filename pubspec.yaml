@@ -60,7 +60,7 @@ dependencies:
   ailia_llm:
     git:
       url: https://github.com/ailia-ai/ailia-llm-flutter.git
-      ref: v1.5.1_beta6
+      ref: v1.5.1_beta7
 
   ailia_tracker:
     git:
