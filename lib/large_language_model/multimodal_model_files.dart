@@ -17,7 +17,7 @@ List<String> _multimodalModelFiles(String type, String backend, {String? soc}) {
       throw UnsupportedError('HTP supports only Gemma 4 E2B VLM / ALM.');
     }
     final textFiles = qnnTextModelFiles('gemma4-e2b', soc ?? '');
-    return [...textFiles, qnnMmprojFolder, 'gemma4-e2b-$soc-mmproj.qnn'];
+    return [...textFiles, ...qnnMmprojFiles(soc ?? '')];
   }
   switch (type) {
     case 'gemma3-multimodal':

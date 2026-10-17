@@ -130,8 +130,7 @@ void main() {
         MultimodalLargeLanguageModel().getModelList('gemma4-e2b-vlm', backend);
     expect(vlmFiles, [
       ...files,
-      'gemma/qnn/v1.5.0',
-      'gemma4-e2b-$soc-mmproj.qnn',
+      ...qnnMmprojFiles(soc),
     ]);
     expect(
         MultimodalLargeLanguageModel().getModelList('gemma4-e2b-alm', backend),

@@ -100,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (windowsQnnSocs.any((soc) =>
         qnnBody('gemma4-e2b', soc) &&
-        File('${base}gemma4-e2b-$soc-mmproj.qnn').existsSync())) {
+        File('$base${qnnMmprojFiles(soc)[1]}').existsSync())) {
       downloaded.add('gemma4-e2b-vlm');
       downloaded.add('gemma4-e2b-alm');
     }

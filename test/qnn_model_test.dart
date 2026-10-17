@@ -40,6 +40,18 @@ void main() {
         'gemma/qnn/v1.5.1');
   });
 
+  test('projector follows the selected QNN model format', () {
+    addTearDown(() => qnnModelFormat = QnnModelFormat.v151);
+    expect(qnnMmprojFiles('sc8380xp'),
+        ['gemma/qnn/v1.5.1', 'gemma4-e2b-sc8380xp-fp16-mmproj.qnn']);
+    expect(qnnMmprojFiles('qcs6490'),
+        ['gemma/qnn/v1.5.1', 'gemma4-e2b-qcs6490-int16-mmproj.qnn']);
+    qnnModelFormat = QnnModelFormat.v150;
+    expect(qnnMmprojFiles('sc8380xp'),
+        ['gemma/qnn/v1.5.0', 'gemma4-e2b-sc8380xp-mmproj.qnn']);
+    expect(() => qnnMmprojFiles('sm7635'), throwsUnsupportedError);
+  });
+
   test('MTP is unavailable only for the v1.5.0 QNN format', () {
     addTearDown(() => qnnModelFormat = QnnModelFormat.v151);
     expect(mtpAvailable('gemma4-e2b', 'HTP'), isTrue);

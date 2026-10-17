@@ -31,10 +31,21 @@ List<String> qnnTextModelFiles(String type, String soc) {
   if (qnnModelFormat == QnnModelFormat.v150) {
     // Pre-MTP context binaries, for checking compatibility with the
     // current library. They have no AR-4 graph, so MTP cannot open.
-    return [qnnMmprojFolder, '$type-$soc.qnn'];
+    return [qnnLegacyModelFolder, '$type-$soc.qnn'];
   }
   // MTP-capable bodies also generate normally when no assistant is opened.
   return [qnnModelFolder, '$type-$soc-${qnnPrecision(soc)}-mtp.qnn'];
+}
+
+/// [folder, file] of the Gemma 4 E2B multimodal projector published with
+/// the body of the selected [qnnModelFormat].
+List<String> qnnMmprojFiles(String soc) {
+  // Validates the SoC like the body files.
+  qnnTextModelFiles('gemma4-e2b', soc);
+  if (qnnModelFormat == QnnModelFormat.v150) {
+    return [qnnLegacyModelFolder, 'gemma4-e2b-$soc-mmproj.qnn'];
+  }
+  return [qnnModelFolder, 'gemma4-e2b-$soc-${qnnPrecision(soc)}-mmproj.qnn'];
 }
 
 /// Published QNN context binary formats for the Gemma 4 text body.
@@ -53,8 +64,8 @@ QnnModelFormat qnnModelFormat = QnnModelFormat.v151;
 /// ailia LLM 1.5.1 context binaries (QAIRT 2.47) with the AR-4 MTP graph.
 const qnnModelFolder = 'gemma/qnn/v1.5.1';
 
-/// The 1.5.0 projectors are compatible with the 1.5.1 MTP bodies.
-const qnnMmprojFolder = 'gemma/qnn/v1.5.0';
+/// ailia LLM 1.5.0 context binaries, selectable as a debug option.
+const qnnLegacyModelFolder = 'gemma/qnn/v1.5.0';
 
 /// Activation precision of the published context binaries per SoC.
 String qnnPrecision(String soc) =>

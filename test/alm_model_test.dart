@@ -22,8 +22,8 @@ void main() {
       expect(multimodalModelFiles('gemma4-e2b-alm', 'HTP', soc: soc), [
         'gemma/qnn/v1.5.1',
         'gemma4-e2b-$soc-${qnnPrecision(soc)}-mtp.qnn',
-        'gemma/qnn/v1.5.0',
-        'gemma4-e2b-$soc-mmproj.qnn',
+        'gemma/qnn/v1.5.1',
+        'gemma4-e2b-$soc-${qnnPrecision(soc)}-mmproj.qnn',
       ]);
     }
   });
