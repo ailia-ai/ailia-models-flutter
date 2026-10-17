@@ -6,6 +6,7 @@ import 'package:path/path.dart' show basename;
 
 import '../../backend_state.dart';
 import '../../model_catalog.dart';
+import '../../license_error_dialog.dart';
 import '../../utils/download_model.dart';
 
 /// The ailia environment selected in the top bar.
@@ -71,6 +72,7 @@ class DemoSession extends ChangeNotifier {
   }
 
   void showError(Object error) {
+    if (!_disposed) showAiliaLicenseError(error);
     errorText = "$error";
     status = '';
     downloadProgress = null;
