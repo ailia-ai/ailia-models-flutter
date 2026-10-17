@@ -1,6 +1,7 @@
 import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
 import 'package:ailia_models_flutter/screens/demo/mtp_switch.dart';
 import 'package:ailia_models_flutter/screens/settings_screen.dart';
+import 'package:ailia_models_flutter/sdk_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,7 +9,14 @@ void main() {
   testWidgets('QNN model format switches between v1.5.1 and v1.5.0',
       (tester) async {
     addTearDown(() => qnnModelFormat = QnnModelFormat.v151);
-    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+    final status = SdkStatus(
+      readVersion: () => 'ailia-sdk-test',
+      readLicense: () async => null,
+    );
+    addTearDown(status.dispose);
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(status: status)),
+    );
     expect(find.text('Debug options'), findsOneWidget);
     expect(qnnModelFormat, QnnModelFormat.v151);
 

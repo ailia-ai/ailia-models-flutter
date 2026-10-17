@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../model_catalog.dart';
 import '../large_language_model/qnn_model.dart';
+import '../sdk_status.dart';
 import '../utils/download_model.dart';
 import '../utils/qnn_device.dart';
 import '../utils/qnn_support.dart';
 import 'demo_screen.dart';
-import 'settings_screen.dart';
+import 'sdk_status_actions.dart';
 
 /// Representative file per model, used to show a "downloaded" badge on
 /// the model card. Paths are relative to the app's model directory.
@@ -78,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refreshDownloaded() async {
+    await SdkStatus.instance.refresh();
     // Resolve the model directory once instead of a platform-channel
     // round trip per model.
     final base = await getModelPath('');
@@ -121,16 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('ailia MODELS Flutter'),
         actions: [
-          IconButton(
-            tooltip: 'Settings',
-            icon: const Icon(Icons.settings),
-            onPressed: () async {
-              await Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => const SettingsScreen()));
-              // The QNN model format decides which files count as downloaded.
-              _refreshDownloaded();
-            },
-          ),
+          SdkStatusActions(onSettingsClosed: _refreshDownloaded),
         ],
       ),
       body: GridView.builder(
