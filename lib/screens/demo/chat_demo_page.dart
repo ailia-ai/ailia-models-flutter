@@ -34,6 +34,10 @@ class _ChatDemoPageState extends State<ChatDemoPage>
   String? _llmBackend;
   bool? _llmMtp;
   bool _generating = false;
+
+  /// True while the reply streams in; the stop button is shown then.
+  bool _streaming = false;
+  bool _stopRequested = false;
   final List<Map<String, String>> _messages = [];
   final TextEditingController _textController = TextEditingController();
   String _systemPrompt = 'あなたは親切なアシスタントです。';
@@ -201,6 +205,10 @@ class _ChatDemoPageState extends State<ChatDemoPage>
       // rebuilding the screen per token.
       final reply = StringBuffer();
       int lastPaintMs = 0;
+      safeSetState(() {
+        _streaming = true;
+        _stopRequested = false;
+      });
       void paintReply() {
         safeSetState(() {
           _messages.last['content'] = reply.toString();
@@ -216,7 +224,8 @@ class _ChatDemoPageState extends State<ChatDemoPage>
           lastPaintMs = nowMs;
           paintReply();
         }
-      }, shouldContinue: () => mounted);
+        // A stopped reply keeps its partial text in the conversation.
+      }, shouldContinue: () => mounted && !_stopRequested);
       if (mounted) {
         paintReply();
       }
@@ -228,6 +237,7 @@ class _ChatDemoPageState extends State<ChatDemoPage>
       _session.showError("Inference Error: $e");
     } finally {
       _generating = false;
+      _streaming = false;
       if (mounted) {
         safeSetState(() {});
       } else {
@@ -293,6 +303,9 @@ class _ChatDemoPageState extends State<ChatDemoPage>
           ChatInputRow(
             controller: _textController,
             onSend: _generating ? null : _sendMessage,
+            onStop: _streaming
+                ? () => safeSetState(() => _stopRequested = true)
+                : null,
           ),
         ],
       ),

@@ -160,6 +160,7 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
     _decodeTokens = 0;
     _decodeSeconds = 0;
     final stopwatch = Stopwatch()..start();
+    final firstMessage = _messages.length;
     try {
       await _ensureModel(backend);
       if (!mounted || _cancelled || _worker == null) return;
@@ -178,7 +179,15 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
         _messages.remove(_assistant);
         _assistant = null;
       }
-      _session.showError(error);
+      if (_cancelled && mounted) {
+        // The model drops a stopped request from its history, so drop its
+        // messages too and give the question back for editing.
+        _messages.removeRange(firstMessage, _messages.length);
+        _input.text = text;
+        _session.showResult('Stopped.');
+      } else {
+        _session.showError(error);
+      }
     } finally {
       if (_cancelled) _session.clearStatus();
       safeSetState(() {

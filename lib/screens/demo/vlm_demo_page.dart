@@ -52,6 +52,9 @@ class _VlmDemoPageState extends State<VlmDemoPage>
   (String, bool)? _conversationConfig;
 
   bool _useCamera = false;
+
+  /// True while a reply is generated; the stop button is shown then.
+  bool _generating = false;
   ui.Image? _image;
 
   @override
@@ -210,6 +213,7 @@ class _VlmDemoPageState extends State<VlmDemoPage>
               _session.setStatus('Loading model with selected backend...'),
           onModelLoaded: (error) {
             mtpError = error;
+            safeSetState(() => _generating = true);
             if (imagePath != null) _imageSent = true;
             _session.setStatus(
                 imagePath == null ? 'Generating...' : 'Image Processing...');
@@ -239,6 +243,8 @@ class _VlmDemoPageState extends State<VlmDemoPage>
           _imageSent = false;
         });
         rethrow;
+      } finally {
+        safeSetState(() => _generating = false);
       }
       _session.clearStatus();
       safeSetState(() {});
@@ -330,6 +336,8 @@ class _VlmDemoPageState extends State<VlmDemoPage>
               controller: _queryController,
               label: 'Query',
               onSend: _session.processing ? null : _send,
+              // A stopped reply keeps its partial text in the conversation.
+              onStop: _generating ? _vlm.stop : null,
             ),
           ],
         ),

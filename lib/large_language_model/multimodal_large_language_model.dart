@@ -300,6 +300,10 @@ class MultimodalLargeLanguageModel {
     });
   }
 
+  /// Stops the reply being generated; the conversation keeps the partial
+  /// reply and the model stays loaded.
+  void stop() => _worker.stop();
+
   /// Releases the persistent worker, stopping generation between tokens.
   void cancel() => _worker.cancel();
 

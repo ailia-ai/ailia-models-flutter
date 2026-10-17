@@ -55,6 +55,9 @@ class _AlmDemoPageState extends State<AlmDemoPage>
   bool _recording = false;
   bool _recordingBusy = false;
 
+  /// True while a reply is generated; the stop button is shown then.
+  bool _generating = false;
+
   @override
   void dispose() {
     _amplitude?.cancel();
@@ -242,6 +245,7 @@ class _AlmDemoPageState extends State<AlmDemoPage>
                   _session.setStatus('Loading audio model...'),
               onModelLoaded: (error) {
                 mtpError = error;
+                safeSetState(() => _generating = true);
                 _session.setStatus(
                     audio == null ? 'Generating...' : 'Audio Processing...');
               },
@@ -269,6 +273,8 @@ class _AlmDemoPageState extends State<AlmDemoPage>
           _conversationConfig = null;
           safeSetState(_turns.clear);
           rethrow;
+        } finally {
+          safeSetState(() => _generating = false);
         }
         _session.clearStatus();
         if (mounted) {
@@ -339,6 +345,8 @@ class _AlmDemoPageState extends State<AlmDemoPage>
                         label: 'Audio query',
                         enabled: !_session.processing,
                         onSend: _canSend ? _send : null,
+                        // A stopped reply keeps its partial text.
+                        onStop: _generating ? _alm.stop : null,
                         trailing: [
                           if (supportsMtp(widget.model.id)) ...[
                             const SizedBox(width: 12),
