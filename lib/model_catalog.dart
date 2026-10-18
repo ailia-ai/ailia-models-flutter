@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'large_language_model/qnn_model.dart';
+import 'utils/qnn_env.dart';
 
 /// What kind of input the demo consumes. Used to decide which input
 /// source toggle (image/webcam or audio/mic) is shown on the demo screen.
@@ -77,12 +78,13 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'whisper_small', 'Whisper Small', 'Speech To Text', ModelInputKind.audio),
   ModelInfo('whisper_medium', 'Whisper Medium', 'Speech To Text',
-      ModelInputKind.audio),
-  ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo',
-      'Speech To Text', ModelInputKind.audio),
-  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text',
       ModelInputKind.audio,
-      qnnSupported: true),
+      qnnSupported: true, supportedQnnSocs: whisperMediumQnnSocs),
+  ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo',
+      'Speech To Text', ModelInputKind.audio,
+      qnnSupported: true, supportedQnnSocs: whisperLargeV3TurboQnnSocs),
+  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text',
+      ModelInputKind.audio),
   ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing',
       ModelInputKind.text),
   ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing',

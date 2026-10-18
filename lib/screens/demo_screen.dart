@@ -34,6 +34,7 @@ class _DemoScreenState extends State<DemoScreen> {
     BackendState.instance.applyModelDefault(
       preferQnn: widget.model.qnnSupported,
       forLlm: widget.model.usesLlmBackend,
+      speechModel: widget.model.isSpeechToText ? widget.model.id : null,
       supportedQnnSocs: widget.model.supportedQnnSocs,
     );
   }

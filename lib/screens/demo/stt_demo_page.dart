@@ -155,7 +155,7 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
 
   Future<void> _runStreaming() async {
     List<String> modelList =
-        AudioProcessingWhisper().getModelList(widget.model.id);
+        AudioProcessingWhisper().getModelList(widget.model.id, selectedEnvId);
     if (!await _session.downloadModelList(modelList)) {
       return;
     }
@@ -164,7 +164,10 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
 
     File vadFile = File(await getModelPath(modelList[1]));
     File onnxEncoderFile = File(await getModelPath(modelList[3]));
-    File onnxDecoderFile = File(await getModelPath(modelList[5]));
+    // The QNN context binary holds both the encoder and the decoder.
+    File onnxDecoderFile = modelList.length > 5
+        ? File(await getModelPath(modelList[5]))
+        : onnxEncoderFile;
 
     // The Stop button handles termination via _stopRecognition; ignore
     // a Run that lands while stopping or already recording.
@@ -233,7 +236,8 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
     ByteData data = await rootBundle.load("assets/demo.wav");
     final wav = Wav.read(data.buffer.asUint8List());
     AudioProcessingWhisper whisper = AudioProcessingWhisper();
-    List<String> modelList = whisper.getModelList(widget.model.id);
+    List<String> modelList =
+        whisper.getModelList(widget.model.id, selectedEnvId);
     safeSetState(() {
       _transcript.clear();
     });
@@ -242,7 +246,10 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
     }
     File vadFile = File(await getModelPath(modelList[1]));
     File onnxEncoderFile = File(await getModelPath(modelList[3]));
-    File onnxDecoderFile = File(await getModelPath(modelList[5]));
+    // The QNN context binary holds both the encoder and the decoder.
+    File onnxDecoderFile = modelList.length > 5
+        ? File(await getModelPath(modelList[5]))
+        : onnxEncoderFile;
     int startTime = DateTime.now().millisecondsSinceEpoch;
     List<SpeechText> texts = await whisper.transcribe(
         wav,

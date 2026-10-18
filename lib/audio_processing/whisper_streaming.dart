@@ -40,17 +40,6 @@ void speechToTextIsolateFunc(SendPort initialReplyTo) {
         message["envId"],
         virtualMemory:message["virtualMemory"],
       );
-      // QNN needs a static input shape (SenseVoice), or runs only the
-      // encoder on QNN with the rest on CPU (Whisper).
-      if (message["staticInputLength"] > 0) {
-        ailiaSpeechToText.setStaticInputLength(message["staticInputLength"]);
-      }
-      if (message["encoderEnvId"] != null) {
-        ailiaSpeechToText.setEnvId(
-          ailia_speech_dart.AILIA_SPEECH_MODEL_TARGET_ENCODER,
-          message["encoderEnvId"],
-        );
-      }
       ailiaSpeechToText.open(
         message["encoderFile"],
         message["decoderFile"],
@@ -58,11 +47,6 @@ void speechToTextIsolateFunc(SendPort initialReplyTo) {
         message["language"],
         message["modelType"],
       );
-      if (message["warmup"]) {
-        // QNN builds its graph on the first inference; warm up here so
-        // the first chunk is not delayed.
-        ailiaSpeechToText.warmup();
-      }
       return;
     }
 
@@ -167,11 +151,8 @@ class SpeechToTextIsolate {
     String language,
     bool vadEnable,
     int envId,
-    bool virtualMemory, {
-    int? encoderEnvId,
-    int staticInputLength = 0,
-    bool warmup = false,
-  }) async {
+    bool virtualMemory,
+  ) async {
     _isTerminateFlag = false;
     _isInterruptFlag = false;
     receivePort = ReceivePort();
@@ -207,10 +188,7 @@ class SpeechToTextIsolate {
       "modelType": modelType,
       "vadEnable": vadEnable,
       "envId": envId,
-      "virtualMemory": virtualMemory,
-      "encoderEnvId": encoderEnvId,
-      "staticInputLength": staticInputLength,
-      "warmup": warmup
+      "virtualMemory": virtualMemory
     };
     sendPort.send(args);
 
@@ -319,13 +297,6 @@ class AudioProcessingWhisperStreaming {
       Directory path = await getTemporaryDirectory();
       AiliaModel.setTemporaryCachePath(path.path);
     }
-    final qnnSelected = isQnnEnvironment(env_id);
-    final isSenseVoice = type == "sensevoice_small";
-    // On QNN the Whisper decoder does not run, so only the encoder is
-    // placed on QNN and the engine itself (decoder / VAD) runs on the
-    // CPU. SenseVoice runs entirely on QNN with a static input shape.
-    final engineEnvId =
-        (qnnSelected && !isSenseVoice) ? cpuEnvironmentId() : env_id;
     _ailiaSpeechModel.init(
       intermediateCallback,
       messageCallback,
@@ -337,12 +308,8 @@ class AudioProcessingWhisperStreaming {
       liveTranscribe,
       lang,
       true,
-      engineEnvId,
+      speechEngineEnvId(env_id),
       virtualMemory,
-      encoderEnvId: (qnnSelected && !isSenseVoice) ? env_id : null,
-      staticInputLength:
-          (qnnSelected && isSenseVoice) ? qnnStaticInputLengthSec : 0,
-      warmup: qnnSelected,
     );
   }
 
