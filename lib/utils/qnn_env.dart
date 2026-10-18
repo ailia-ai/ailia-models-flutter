@@ -19,13 +19,9 @@ import 'qnn_device.dart';
 /// are packed into the same file.
 const speechQnnModelFolder = 'whisper/qnn/v1.6.0';
 
-/// SoCs with a published Whisper context binary, per model.
-const whisperMediumQnnSocs = {'qcs6490'};
-const whisperLargeV3TurboQnnSocs = {'qcs6490', 'sc8380xp'};
-const speechQnnSocs = <String, Set<String>>{
-  'whisper_medium': whisperMediumQnnSocs,
-  'whisper_large_v3_turbo': whisperLargeV3TurboQnnSocs,
-};
+/// SoCs with a published Whisper context binary. Every model below is
+/// published for the same SoCs.
+const speechQnnSocs = {'qcs6490', 'sc8380xp', 'sm7635', 'sm8475'};
 
 const _speechQnnModelNames = {
   'whisper_medium': 'whisper-medium',
@@ -36,11 +32,10 @@ const _speechQnnModelNames = {
 /// Never substitute a different SoC's package.
 List<String> speechQnnModelFiles(String type, String soc) {
   final name = _speechQnnModelNames[type];
-  if (name == null || speechQnnSocs[type]?.contains(soc) != true) {
+  if (name == null || !speechQnnSocs.contains(soc)) {
     throw UnsupportedError(
         'No QNN context binary of $type for SoC "$soc". QNN supports '
-        'Whisper Medium (qcs6490) and Whisper Large V3 Turbo '
-        '(qcs6490 / sc8380xp) on Windows ARM64.');
+        'Whisper Medium / Large V3 Turbo on ${speechQnnSocs.join(' / ')}.');
   }
   return [speechQnnModelFolder, '$name-$soc-int16.qnn'];
 }
@@ -59,7 +54,9 @@ final AiliaEnvironment speechQnnEnvironment = AiliaEnvironment()
 String? speechQnnSoc(String type) {
   if (Abi.current() != Abi.windowsArm64) return null;
   final soc = qnnSocName;
-  return speechQnnSocs[type]?.contains(soc) == true ? soc : null;
+  return _speechQnnModelNames.containsKey(type) && speechQnnSocs.contains(soc)
+      ? soc
+      : null;
 }
 
 /// Environment to create the ailia Speech instance on. The .qnn context
