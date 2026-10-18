@@ -38,7 +38,7 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
 
   bool _useMic = false;
   bool _virtualMemory = false;
-  bool _liveTranscribe = false;
+  bool _liveTranscribe = true;
 
   final AudioProcessingWhisperStreaming _whisperStreaming =
       AudioProcessingWhisperStreaming();
