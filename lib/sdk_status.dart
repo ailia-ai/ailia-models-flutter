@@ -34,10 +34,10 @@ class SdkStatus extends ChangeNotifier {
   String get version => _readVersion();
   String expiry = 'Loading...';
 
-  /// Perpetual licenses and development builds of the SDK do not expire.
+  /// Perpetual licenses do not expire. Matches AiliaLicense, which skips
+  /// the license file only for these builds.
   static bool isPerpetual(String version) =>
-      version.contains('perpetual_license') ||
-      version.toLowerCase().contains('develop');
+      version.contains('perpetual_license');
 
   Future<void> refresh() async {
     if (isPerpetual(version)) {
