@@ -5,8 +5,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: main
-      resolved-ref: "7db99b05ce9b45013f9fd0240a974d1d03b5f579"
+      ref: qnn
+      resolved-ref: c46ee8933ec76e01b1358f93f9b870a011a885d5
       url: "https://github.com/ailia-ai/ailia-sdk-flutter.git"
     source: git
     version: "1.6.1"
@@ -32,8 +32,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: main
-      resolved-ref: "7a1dd0419dd91a2e780d61af7cc57e7aab6bf698"
+      ref: set_static_input_length
+      resolved-ref: "809700254f81f38db13f4133eaeae3f4245a5322"
       url: "https://github.com/ailia-ai/ailia-speech-flutter.git"
     source: git
     version: "1.5.2"

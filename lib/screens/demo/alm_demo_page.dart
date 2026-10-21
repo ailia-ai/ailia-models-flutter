@@ -10,6 +10,7 @@ import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
 import '../../large_language_model/mtp.dart';
+import '../../large_language_model/qnn_model.dart';
 import '../../large_language_model/recorded_wav.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
@@ -53,6 +54,9 @@ class _AlmDemoPageState extends State<AlmDemoPage>
   DateTime? _recStart;
   bool _recording = false;
   bool _recordingBusy = false;
+
+  /// True while a reply is generated; the stop button is shown then.
+  bool _generating = false;
 
   @override
   void dispose() {
@@ -197,7 +201,7 @@ class _AlmDemoPageState extends State<AlmDemoPage>
     await _session.run(() async {
       if (!mounted) return;
       try {
-        final files = _alm.getModelList(widget.model.id, mtp);
+        final files = _alm.getModelList(widget.model.id, backend, mtp);
         if (!await _session.downloadModelList(files) || !mounted) return;
         final modelFile = File(await getModelPath(files[1]));
         final mmprojFile = File(await getModelPath(files[3]));
@@ -231,7 +235,8 @@ class _AlmDemoPageState extends State<AlmDemoPage>
               model: modelFile,
               mmproj: mmprojFile,
               backend: backend,
-              nCtx: MultimodalLargeLanguageModel.contextSize(widget.model.id),
+              nCtx: MultimodalLargeLanguageModel.contextSize(
+                  widget.model.id, modelFile.path, backend),
               systemPrompt: '',
               inputText: query,
               audioPath: audio?.path,
@@ -240,6 +245,7 @@ class _AlmDemoPageState extends State<AlmDemoPage>
                   _session.setStatus('Loading audio model...'),
               onModelLoaded: (error) {
                 mtpError = error;
+                safeSetState(() => _generating = true);
                 _session.setStatus(
                     audio == null ? 'Generating...' : 'Audio Processing...');
               },
@@ -267,6 +273,8 @@ class _AlmDemoPageState extends State<AlmDemoPage>
           _conversationConfig = null;
           safeSetState(_turns.clear);
           rethrow;
+        } finally {
+          safeSetState(() => _generating = false);
         }
         _session.clearStatus();
         if (mounted) {
@@ -337,11 +345,14 @@ class _AlmDemoPageState extends State<AlmDemoPage>
                         label: 'Audio query',
                         enabled: !_session.processing,
                         onSend: _canSend ? _send : null,
+                        // A stopped reply keeps its partial text.
+                        onStop: _generating ? _alm.stop : null,
                         trailing: [
                           if (supportsMtp(widget.model.id)) ...[
                             const SizedBox(width: 12),
                             MtpSwitch(
                               value: mtp,
+                              available: mtpAvailableFor(widget.model.id),
                               onChanged: _session.processing
                                   ? null
                                   : (value) => safeSetState(() {

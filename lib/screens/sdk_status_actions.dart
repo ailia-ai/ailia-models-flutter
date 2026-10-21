@@ -7,9 +7,10 @@ import 'settings_screen.dart';
 
 /// Compact SDK/license details immediately to the left of Settings.
 class SdkStatusActions extends StatelessWidget {
-  const SdkStatusActions({super.key, this.status});
+  const SdkStatusActions({super.key, this.status, this.onSettingsClosed});
 
   final SdkStatus? status;
+  final VoidCallback? onSettingsClosed;
 
   @override
   Widget build(BuildContext context) {
@@ -57,12 +58,13 @@ class SdkStatusActions extends StatelessWidget {
         IconButton(
           tooltip: 'Settings',
           icon: const Icon(Icons.settings),
-          onPressed: () {
-            Navigator.of(context).push(
+          onPressed: () async {
+            await Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (context) => SettingsScreen(status: sdkStatus),
               ),
             );
+            onSettingsClosed?.call();
           },
         ),
       ],

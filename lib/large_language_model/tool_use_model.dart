@@ -2,17 +2,32 @@ import 'dart:convert';
 
 import 'package:ailia_llm/ailia_llm_model.dart';
 
-import 'generation_metrics.dart';
 import 'mtp.dart';
+import 'qnn_model.dart';
+import 'generation_metrics.dart';
 
 /// Gemma 4 tool-use conversation, following AiliaToolUseSample.kt.
 /// Only the simulated air conditioner below can be changed by this demo.
 class ToolUseModel {
-  ToolUseModel({AiliaLLMModel? model}) : _model = model ?? AiliaLLMModel();
+  ToolUseModel({AiliaLLMModel? model, List<String> Function()? backendList})
+      : _model = model ?? AiliaLLMModel(),
+        _backendList = backendList ?? AiliaLLMModel.getBackendList;
 
   static const modelFile = 'gemma-4-E2B-it-Q4_K_M.gguf';
 
-  static List<String> mtpFiles() => mtpAssistantFiles('gemma4-e2b-tool-use');
+  /// Tool Use shares the text-chat package, including its SoC-specific QNN
+  /// context binary. A projector is not needed for function calling.
+  static List<String> modelFiles(String backend, {String? soc}) {
+    if (isLlmQnnBackend(backend)) {
+      return qnnTextModelFiles('gemma4-e2b', soc ?? '');
+    }
+    return ['gemma', modelFile];
+  }
+
+  /// MTP assistant matching [modelFiles].
+  static List<String> mtpFiles(String backend, {String? soc}) =>
+      mtpAssistantFiles('gemma4-e2b-tool-use', backend, soc: soc);
+
   static const defaultPrompt = 'エアコンの温度を20度にしてください';
   static const toolName = 'set_air_conditioner_temperature';
   static const tools = <Map<String, dynamic>>[
@@ -33,20 +48,23 @@ class ToolUseModel {
   ];
 
   final AiliaLLMModel _model;
+  final List<String> Function() _backendList;
   final List<Map<String, dynamic>> _history = [];
   double? airConditionerTemperature;
   bool _busy = false;
   bool _cancelled = false;
 
-  /// Error opening the assistant; null when active or not requested.
+  /// Error from opening the MTP assistant; null when MTP is active or
+  /// was not requested.
   String? mtpError;
 
   void open(String path, String backend, {String? mtpPath}) {
-    if (!AiliaLLMModel.getBackendList().contains(backend)) {
+    final nCtx = llmContextLength(path, backend);
+    if (!_backendList().contains(backend)) {
       throw StateError('LLM backend unavailable: $backend');
     }
     try {
-      _model.open(path, 8192, backend: backend);
+      _model.open(path, nCtx, backend: backend);
       mtpError = openMtpAssistant(_model, mtpPath);
       _model.setSamplingParams(40, 0.9, 0.0, 1234);
       _model.setTools(tools);

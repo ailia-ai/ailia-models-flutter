@@ -3,18 +3,31 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:http/http.dart' as http;
 import 'multimodal_model_files.dart';
 import 'media_prompt.dart';
+import 'qnn_model.dart';
+import 'qnn_runtime.dart';
 import 'multimodal_worker.dart';
 
 class MultimodalLargeLanguageModel {
   final AiliaLLMModel _ailiaLLMModel = AiliaLLMModel();
   final MultimodalWorker _worker = MultimodalWorker();
 
-  static int contextSize(String type) =>
-      type == 'gemma4-e2b-vlm' ? 16384 : 8192;
+  static int contextSize(String type, String modelPath, String backend) {
+    final qnnContext = llmContextLength(modelPath, backend);
+    return isLlmQnnBackend(backend)
+        ? qnnContext
+        : (type == 'gemma4-e2b-vlm' || type == 'gemma4-e2b-alm' ? 16384 : 8192);
+  }
 
+  /// [folder, body, folder, mmproj], followed by [folder, assistant] when
+  /// [mtp] is requested for a model that supports it.
   List<String> getModelList(
-          [String type = 'gemma3-multimodal', bool mtp = false]) =>
-      multimodalModelFiles(type, mtp: mtp);
+      [String type = 'gemma3-multimodal',
+      String backend = '',
+      bool mtp = false]) {
+    return multimodalModelFiles(type, backend,
+        soc: isLlmQnnBackend(backend) ? availableWindowsQnnSoc() : null,
+        mtp: mtp);
+  }
 
   List<Map<String, dynamic>> messages =
       List<Map<String, dynamic>>.empty(growable: true);
@@ -92,7 +105,8 @@ class MultimodalLargeLanguageModel {
     if (mediaType != 'image' && mediaType != 'audio') {
       throw ArgumentError('Unsupported media type: $mediaType');
     }
-    const nCtx = 8192;
+    final nCtx = llmContextLength(model.path, backend);
+    llmContextLength(mmproj.path, backend);
 
     List<String> backendList = AiliaLLMModel.getBackendList();
     if (!backendList.contains(backend)) {
@@ -285,6 +299,10 @@ class MultimodalLargeLanguageModel {
       }
     });
   }
+
+  /// Stops the reply being generated; the conversation keeps the partial
+  /// reply and the model stays loaded.
+  void stop() => _worker.stop();
 
   /// Releases the persistent worker, stopping generation between tokens.
   void cancel() => _worker.cancel();

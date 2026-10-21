@@ -74,12 +74,14 @@ class SendShortcut extends StatelessWidget {
 }
 
 /// Message box with a send button, used below a conversation. Cmd+Enter
-/// (macOS) or Ctrl+Enter (Windows / Linux) sends the message.
+/// (macOS) or Ctrl+Enter (Windows / Linux) sends the message. While a
+/// reply is generated, [onStop] turns the send button into a stop button.
 class ChatInputRow extends StatelessWidget {
   const ChatInputRow({
     super.key,
     required this.controller,
     required this.onSend,
+    this.onStop,
     this.enabled = true,
     this.label = 'Message',
     this.trailing = const [],
@@ -89,6 +91,9 @@ class ChatInputRow extends StatelessWidget {
 
   /// Null disables sending (e.g. while generating).
   final VoidCallback? onSend;
+
+  /// Stops the reply being generated; non-null shows the stop button.
+  final VoidCallback? onStop;
   final bool enabled;
   final String label;
 
@@ -117,11 +122,18 @@ class ChatInputRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        IconButton.filled(
-          tooltip: 'Send ($sendShortcutLabel)',
-          onPressed: onSend,
-          icon: const Icon(Icons.send),
-        ),
+        if (onStop != null)
+          IconButton.filled(
+            tooltip: 'Stop',
+            onPressed: onStop,
+            icon: const Icon(Icons.stop),
+          )
+        else
+          IconButton.filled(
+            tooltip: 'Send ($sendShortcutLabel)',
+            onPressed: onSend,
+            icon: const Icon(Icons.send),
+          ),
         ...trailing,
       ],
     );
