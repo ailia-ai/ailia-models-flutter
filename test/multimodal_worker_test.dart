@@ -19,10 +19,18 @@ class FakeMediaModel extends AiliaLLMModel {
   @override
   void open(String path, int nCtx, {String backend = 'CPU'}) {
     opens++;
+    events.send({'type': 'bodyOpened'});
   }
 
   @override
-  void openMultimodalProjectorFile(String path) {}
+  void openMtpModel(String assistantPath, int nDraft) {
+    events.send({'type': 'mtpOpened', 'path': assistantPath, 'draft': nDraft});
+    if (assistantPath == 'bad.gguf') throw StateError('Assistant unavailable');
+  }
+
+  @override
+  void openMultimodalProjectorFile(String path) =>
+      events.send({'type': 'projectorOpened'});
 
   @override
   Map<String, bool> getMultimodalCapabilities() =>
@@ -135,6 +143,47 @@ void main() {
     addTearDown(worker.cancel);
     expect(await worker.run(request()), '1:1:first');
     expect(await worker.run(request()..['backend'] = 'Metal'), '2:1:first');
+  });
+
+  test('MTP opens before the projector, reuses state and reopens on toggle',
+      () async {
+    final worker = MultimodalWorker(entryPoint: fakeWorker);
+    addTearDown(worker.cancel);
+    final events = <Map>[];
+    final input = request()..['mtpPath'] = 'assistant.gguf';
+    expect(await worker.run(input, onEvent: events.add), '1:1:first');
+    final types = events.map((e) => e['type']).toList();
+    expect(types.indexOf('bodyOpened'), lessThan(types.indexOf('mtpOpened')));
+    expect(
+        types.indexOf('mtpOpened'), lessThan(types.indexOf('projectorOpened')));
+    expect(events.singleWhere((e) => e['type'] == 'mtpOpened')['draft'], 3);
+    expect(events.singleWhere((e) => e['type'] == 'ready')['mtpError'], isNull);
+    events.clear();
+    expect(await worker.run(input, onEvent: events.add), '1:3:first');
+    expect(events.map((e) => e['type']), isNot(contains('mtpOpened')));
+    input['mtpPath'] = '';
+    expect(await worker.run(input, onEvent: events.add), '2:1:first');
+    expect(events.map((e) => e['type']), isNot(contains('mtpOpened')));
+    input['mtpPath'] = 'assistant.gguf';
+    expect(await worker.run(input), '3:1:first');
+  });
+
+  test('MTP failure reports an error and keeps normal generation available',
+      () async {
+    final worker = MultimodalWorker(entryPoint: fakeWorker);
+    addTearDown(worker.cancel);
+    final errors = <String?>[];
+    void onEvent(Map event) {
+      if (event['type'] == 'ready') errors.add(event['mtpError'] as String?);
+    }
+
+    final input = request()..['mtpPath'] = 'bad.gguf';
+    expect(await worker.run(input, onEvent: onEvent), '1:1:first');
+    expect(await worker.run(input, onEvent: onEvent), '1:3:first');
+    expect(errors, everyElement(contains('Assistant unavailable')));
+    input['mtpPath'] = '';
+    expect(await worker.run(input, onEvent: onEvent), '2:1:first');
+    expect(errors.last, isNull);
   });
 
   test('reloads for every model configuration change', () async {

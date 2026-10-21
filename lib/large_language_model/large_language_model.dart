@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:ailia_llm/ailia_llm_model.dart';
 
+import 'mtp.dart';
+
 class LargeLanguageModel {
   final AiliaLLMModel _ailiaLLMModel = AiliaLLMModel();
 
@@ -69,9 +71,15 @@ class LargeLanguageModel {
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
   }
 
+  /// [folder, file] of the matching GGUF MTP assistant.
+  List<String> getMtpAssistantFiles(String type) => mtpAssistantFiles(type);
+
+  /// Error opening the assistant; null when active or not requested.
+  String? mtpError;
+
   /// Opens the model with an exact backend name taken from
   /// AiliaLLMModel.getBackendList() (e.g. CPU / Vulkan / OpenCL / Metal).
-  void openWithBackendName(File model, String backend){
+  void openWithBackendName(File model, String backend, {File? mtpAssistant}){
     int nCtx = 8192; // 0 for modelDefault
 
     List<String> backendList = AiliaLLMModel.getBackendList();
@@ -80,6 +88,7 @@ class LargeLanguageModel {
     }
 
     _ailiaLLMModel.open(model.path, nCtx, backend: backend);
+    mtpError = openMtpAssistant(_ailiaLLMModel, mtpAssistant?.path);
   }
 
   void setSystemPrompt(String prompt){
