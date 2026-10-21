@@ -1,12 +1,16 @@
+import 'dart:io';
+
 import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/large_language_model.dart';
+import '../../large_language_model/mtp.dart';
 import '../../model_catalog.dart';
 import 'chat_bubble.dart';
 import 'demo_session.dart';
+import 'mtp_switch.dart';
 
 /// Multi-turn chat with a text LLM, streaming the reply into the
 /// conversation. The model stays open so the conversation continues
@@ -20,12 +24,14 @@ class ChatDemoPage extends StatefulWidget {
   State<ChatDemoPage> createState() => _ChatDemoPageState();
 }
 
-class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
+class _ChatDemoPageState extends State<ChatDemoPage>
+    with SafeSetStateMixin, MtpToggleMixin {
   final DemoSession _session = DemoSession();
   final ScrollController _scrollController = ScrollController();
 
   LargeLanguageModel? _llm;
   String? _llmBackend;
+  bool? _llmMtp;
   bool _generating = false;
   final List<Map<String, String>> _messages = [];
   final TextEditingController _textController = TextEditingController();
@@ -58,12 +64,14 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
   Future<void> _ensureModel() async {
     // ailia LLM has its own backend list; use the LLM selection.
     String selectedBackend = BackendState.instance.selectedLlmBackend.value;
+    final useMtp = mtp && supportsMtp(widget.model.id);
     if (_llm != null) {
-      if (selectedBackend == _llmBackend) {
+      if (selectedBackend == _llmBackend && useMtp == _llmMtp) {
         return;
       }
-      // Backend changed: reopen the model. The context cannot move
-      // between backends, so the conversation starts over.
+      // Backend or MTP changed: reopen the model. The context cannot move
+      // between backends and the MTP assistant cannot be detached, so the
+      // conversation starts over.
       _llm!.close();
       _llm = null;
       safeSetState(() {
@@ -79,6 +87,16 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
     if (modelFile == null) {
       throw Exception("Model download failed");
     }
+    File? assistantFile;
+    if (useMtp) {
+      final assistant = llm.getMtpAssistantFiles(widget.model.id);
+      assistantFile = await _session.downloadFile(
+          "https://storage.googleapis.com/ailia-models/${assistant[0]}/${assistant[1]}",
+          assistant[1]);
+      if (assistantFile == null) {
+        throw Exception("MTP model download failed");
+      }
+    }
     if (!mounted) {
       // The screen was closed during the download; do not load the model.
       return;
@@ -86,7 +104,8 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
 
     _session.setStatus("Loading model with selected backend...");
     try {
-      llm.openWithBackendName(modelFile, selectedBackend);
+      llm.openWithBackendName(modelFile, selectedBackend,
+          mtpAssistant: assistantFile);
     } catch (_) {
       llm.close();
       rethrow;
@@ -98,9 +117,14 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
     llm.setSystemPrompt(_systemPrompt);
     _llm = llm;
     _llmBackend = selectedBackend;
+    _llmMtp = useMtp;
     _session.clearStatus();
-    _session.showResult("Model loaded. Enter a message to chat.");
+    _session.showResult("Model loaded. Enter a message to chat.\n"
+        "${_mtpStatus()}");
   }
+
+  String _mtpStatus() =>
+      mtpStatusText(requested: _llmMtp ?? false, error: _llm?.mtpError);
 
   void _clearChat() {
     safeSetState(() {
@@ -193,7 +217,8 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
       }
       _session.showResult(
           'processing time : ${processingWatch.elapsedMilliseconds} ms\n'
-          'TPS: ${formatTps(timing.tps)} tokens/s');
+          'TPS: ${formatTps(timing.tps)} tokens/s\n'
+          '${_mtpStatus()}');
     } catch (e) {
       _session.showError("Inference Error: $e");
     } finally {
@@ -217,6 +242,16 @@ class _ChatDemoPageState extends State<ChatDemoPage> with SafeSetStateMixin {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              if (supportsMtp(widget.model.id))
+                MtpSwitch(
+                  value: mtp,
+                  onChanged: _generating
+                      ? null
+                      : (value) => safeSetState(() {
+                            mtp = value;
+                          }),
+                ),
+              const Spacer(),
               IconButton(
                 tooltip: 'Edit system prompt',
                 onPressed: _generating ? null : _editSystemPrompt,

@@ -1,4 +1,14 @@
-List<String> multimodalModelFiles(String type) {
+import 'mtp.dart';
+
+/// Body and projector, followed by the assistant when MTP is requested.
+List<String> multimodalModelFiles(String type, {bool mtp = false}) {
+  final files = _multimodalModelFiles(type);
+  return mtp && supportsMtp(type)
+      ? [...files, ...mtpAssistantFiles(type)]
+      : files;
+}
+
+List<String> _multimodalModelFiles(String type) {
   switch (type) {
     case 'gemma3-multimodal':
       return [

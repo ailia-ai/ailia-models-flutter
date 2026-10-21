@@ -11,7 +11,10 @@ class ToolUseWorker {
   void Function(Map<String, dynamic>)? _onEvent;
   bool _disposed = false;
 
-  Future<void> start(String path, String backend) async {
+  /// Error from opening the MTP assistant, reported once the model is ready.
+  String? mtpError;
+
+  Future<void> start(String path, String backend, {String? mtpPath}) async {
     if (_disposed || _events != null) {
       throw StateError('Worker already started');
     }
@@ -35,6 +38,7 @@ class ToolUseWorker {
         return;
       }
       final event = Map<String, dynamic>.from(value as Map);
+      if (event['type'] == 'ready') mtpError = event['mtpError'] as String?;
       if (event['type'] == 'ready' || event['type'] == 'done') {
         final pending = _pending;
         _pending = null;
@@ -46,7 +50,8 @@ class ToolUseWorker {
       }
     });
     try {
-      await Isolate.spawn(_runToolUse, (events.sendPort, path, backend),
+      await Isolate.spawn(
+          _runToolUse, (events.sendPort, path, backend, mtpPath),
           onError: events.sendPort, onExit: events.sendPort);
     } catch (error) {
       _fail(error);
@@ -89,8 +94,8 @@ class ToolUseWorker {
   }
 }
 
-Future<void> _runToolUse((SendPort, String, String) request) async {
-  final (events, path, backend) = request;
+Future<void> _runToolUse((SendPort, String, String, String?) request) async {
+  final (events, path, backend, mtpPath) = request;
   final commands = ReceivePort();
   final model = ToolUseModel();
   var busy = false;
@@ -131,8 +136,8 @@ Future<void> _runToolUse((SendPort, String, String) request) async {
     }
   });
   try {
-    model.open(path, backend);
-    events.send({'type': 'ready'});
+    model.open(path, backend, mtpPath: mtpPath);
+    events.send({'type': 'ready', 'mtpError': model.mtpError});
   } catch (error) {
     events.send({'type': 'error', 'message': '$error'});
     commands.close();

@@ -12,8 +12,9 @@ class MultimodalLargeLanguageModel {
   static int contextSize(String type) =>
       type == 'gemma4-e2b-vlm' ? 16384 : 8192;
 
-  List<String> getModelList([String type = 'gemma3-multimodal']) =>
-      multimodalModelFiles(type);
+  List<String> getModelList(
+          [String type = 'gemma3-multimodal', bool mtp = false]) =>
+      multimodalModelFiles(type, mtp: mtp);
 
   List<Map<String, dynamic>> messages =
       List<Map<String, dynamic>>.empty(growable: true);
@@ -180,15 +181,17 @@ class MultimodalLargeLanguageModel {
     required String systemPrompt,
     required String inputText,
     String? imagePath,
+    File? mtpAssistant,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
-    void Function()? onModelLoaded,
+    void Function(String? mtpError)? onModelLoaded,
     void Function()? onHistoryReset,
   }) =>
       _chatWithMediaIsolate(
         model: model,
         mmproj: mmproj,
+        mtpAssistant: mtpAssistant,
         backend: backend,
         nCtx: nCtx,
         systemPrompt: systemPrompt,
@@ -213,15 +216,17 @@ class MultimodalLargeLanguageModel {
     required String systemPrompt,
     required String inputText,
     String? audioPath,
+    File? mtpAssistant,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
-    void Function()? onModelLoaded,
+    void Function(String? mtpError)? onModelLoaded,
     void Function()? onHistoryReset,
   }) =>
       _chatWithMediaIsolate(
         model: model,
         mmproj: mmproj,
+        mtpAssistant: mtpAssistant,
         backend: backend,
         nCtx: nCtx,
         systemPrompt: systemPrompt,
@@ -244,10 +249,11 @@ class MultimodalLargeLanguageModel {
     required String inputText,
     required String? mediaPath,
     required String mediaType,
+    File? mtpAssistant,
     void Function(String delta)? onDelta,
     void Function(double? ttftMs, double? tps)? onMetrics,
     void Function()? onModelLoading,
-    void Function()? onModelLoaded,
+    void Function(String? mtpError)? onModelLoaded,
     void Function()? onHistoryReset,
   }) {
     final resetHistory = _resetHistory;
@@ -255,6 +261,7 @@ class MultimodalLargeLanguageModel {
     return _worker.run({
       'modelPath': model.path,
       'mmprojPath': mmproj.path,
+      'mtpPath': mtpAssistant?.path ?? '',
       'backend': backend,
       'nCtx': nCtx,
       'systemPrompt': systemPrompt,
@@ -269,7 +276,7 @@ class MultimodalLargeLanguageModel {
         case 'historyReset':
           onHistoryReset?.call();
         case 'ready':
-          onModelLoaded?.call();
+          onModelLoaded?.call(event['mtpError'] as String?);
         case 'delta':
           onDelta?.call(event['text'] as String);
         case 'metrics':

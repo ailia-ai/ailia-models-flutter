@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
+import '../../large_language_model/mtp.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
 import 'camera_input.dart';
 import 'chat_bubble.dart';
 import 'demo_session.dart';
+import 'mtp_switch.dart';
 import 'still_image.dart';
 
 const _sampleImageUrl =
@@ -28,7 +30,8 @@ class VlmDemoPage extends StatefulWidget {
   State<VlmDemoPage> createState() => _VlmDemoPageState();
 }
 
-class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
+class _VlmDemoPageState extends State<VlmDemoPage>
+    with SafeSetStateMixin, MtpToggleMixin {
   final DemoSession _session = DemoSession();
   final CameraInput _camera = CameraInput();
   final MultimodalLargeLanguageModel _vlm = MultimodalLargeLanguageModel();
@@ -43,9 +46,9 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
   /// message carries one.
   bool _imageSent = false;
 
-  /// Backend the conversation runs on; a change reopens the model, which
-  /// starts a new conversation.
-  String? _conversationBackend;
+  /// Backend / MTP the conversation runs on; a change reopens the model,
+  /// which starts a new conversation.
+  (String, bool)? _conversationConfig;
 
   bool _useCamera = false;
   ui.Image? _image;
@@ -160,13 +163,15 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
     if (query.isEmpty || _session.processing) return;
     await _session.run(() async {
       final backend = BackendState.instance.selectedLlmBackend.value;
-      final modelList = _vlm.getModelList(widget.model.id);
+      final modelList = _vlm.getModelList(widget.model.id, mtp);
       if (!await _session.downloadModelList(modelList) || !mounted) return;
       final modelFile = File(await getModelPath(modelList[1]));
       final mmprojFile = File(await getModelPath(modelList[3]));
-      if (_conversationBackend != backend) {
+      final useMtp = modelList.length > 4;
+      final mtpFile = useMtp ? File(await getModelPath(modelList[5])) : null;
+      if (_conversationConfig != (backend, useMtp)) {
         // The model is reopened, so the conversation starts over.
-        _conversationBackend = backend;
+        _conversationConfig = (backend, useMtp);
         _vlm.clearHistory();
         _turns.clear();
         _imageSent = false;
@@ -188,6 +193,7 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       int lastPaintMs = 0;
       double? ttftMs;
       double? tps;
+      String? mtpError;
       try {
         reply.text = await _vlm.chatWithImageIsolate(
           model: modelFile,
@@ -197,9 +203,11 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
           systemPrompt: '',
           inputText: query,
           imagePath: imagePath,
+          mtpAssistant: mtpFile,
           onModelLoading: () =>
               _session.setStatus('Loading model with selected backend...'),
-          onModelLoaded: () {
+          onModelLoaded: (error) {
+            mtpError = error;
             if (imagePath != null) _imageSent = true;
             _session.setStatus(
                 imagePath == null ? 'Generating...' : 'Image Processing...');
@@ -222,7 +230,7 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       } catch (_) {
         // A failed turn closes the model and its conversation.
         _session.clearStatus();
-        _conversationBackend = null;
+        _conversationConfig = null;
         safeSetState(() {
           _turns.clear();
           // Resend the same image (the camera frame stays frozen).
@@ -235,11 +243,12 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       _scrollToBottom();
       _session.showResult('processing time : ${watch.elapsedMilliseconds} ms\n'
           'TTFT: ${formatTtft(ttftMs)}\n'
-          'TPS: ${formatTps(tps)} tokens/s');
+          'TPS: ${formatTps(tps)} tokens/s\n'
+          '${mtpStatusText(requested: useMtp, error: mtpError)}');
     });
   }
 
-  /// Image / Web Camera selector.
+  /// Image / Web Camera selector followed by the MTP toggle on one row.
   Widget _buildSourceSelector() {
     // Rebuilt with the session so the selector is disabled while generating.
     return ListenableBuilder(
@@ -269,6 +278,20 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
           if (_useCamera) ...[
             const SizedBox(width: 12),
             CameraDeviceSelector(input: _camera),
+          ],
+          if (supportsMtp(widget.model.id)) ...[
+            const SizedBox(width: 12),
+            ListenableBuilder(
+              listenable: _session,
+              builder: (context, _) => MtpSwitch(
+                value: mtp,
+                onChanged: _session.processing
+                    ? null
+                    : (value) => safeSetState(() {
+                          mtp = value;
+                        }),
+              ),
+            ),
           ],
         ],
       ),
@@ -318,7 +341,8 @@ class _VlmDemoPageState extends State<VlmDemoPage> with SafeSetStateMixin {
       session: _session,
       scrollController: _scrollController,
       children: [
-        if (CameraInput.supported) _buildSourceSelector(),
+        if (CameraInput.supported || supportsMtp(widget.model.id))
+          _buildSourceSelector(),
         const SizedBox(height: 8),
         if (_useCamera) CameraPreviewView(input: _camera),
         _buildImage(context),
