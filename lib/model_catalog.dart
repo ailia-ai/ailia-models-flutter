@@ -38,7 +38,8 @@ class ModelInfo {
       category == 'Large Language Model' ||
       category == 'VLM' ||
       category == 'ALM' ||
-      category == 'Tool Use';
+      category == 'Tool Use' ||
+      category == 'Voice Agent';
 
   /// Text-only LLMs get the multi-turn chat UI.
   bool get isChat =>
@@ -127,7 +128,8 @@ const List<ModelInfo> modelCatalog = [
       defaultInputText: 'エアコンの温度を20度にしてください',
       qnnSupported: true,
       supportedQnnSocs: windowsQnnSocs),
-  ModelInfo('voice-agent', 'Voice Agent', 'Voice Agent', ModelInputKind.audio),
+  ModelInfo('voice-agent', 'Voice Agent', 'Voice Agent', ModelInputKind.audio,
+      qnnSupported: true),
 ];
 
 /// Remote (folder, filename) pairs for the image demos, shared by the
