@@ -127,6 +127,7 @@ const List<ModelInfo> modelCatalog = [
       defaultInputText: 'エアコンの温度を20度にしてください',
       qnnSupported: true,
       supportedQnnSocs: windowsQnnSocs),
+  ModelInfo('voice-agent', 'Voice Agent', 'Voice Agent', ModelInputKind.audio),
 ];
 
 /// Remote (folder, filename) pairs for the image demos, shared by the
@@ -182,6 +183,8 @@ IconData categoryIcon(String category) {
       return Icons.record_voice_over;
     case 'Tool Use':
       return Icons.build_outlined;
+    case 'Voice Agent':
+      return Icons.record_voice_over;
     case 'Large Language Model':
       return Icons.chat_bubble_outline;
     case 'VLM':
@@ -214,6 +217,7 @@ Color categoryColor(BuildContext context, String category) {
     case 'VLM':
     case 'ALM':
     case 'Tool Use':
+    case 'Voice Agent':
       return Colors.indigo;
     case 'Diffusion':
       return Colors.deepPurple;
