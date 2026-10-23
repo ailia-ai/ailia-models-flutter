@@ -32,8 +32,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v1.6.0_beta3"
-      resolved-ref: "53aa5c72a001eb5ca1d930f197cf28002d6f50ff"
+      ref: "v1.6.0_beta4"
+      resolved-ref: "25176cada1892604625f0c9d7704cb6f57d90371"
       url: "https://github.com/ailia-ai/ailia-speech-flutter.git"
     source: git
     version: "1.6.0"
