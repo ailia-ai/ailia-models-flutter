@@ -50,7 +50,7 @@ dependencies:
   ailia_speech:
     git:
       url: https://github.com/ailia-ai/ailia-speech-flutter.git
-      ref: v1.6.0_beta4
+      ref: v1.6.0
 
   ailia_voice:
     git:
