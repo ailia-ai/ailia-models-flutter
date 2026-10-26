@@ -3,6 +3,7 @@
 import 'dart:isolate';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 
@@ -47,6 +48,13 @@ void speechToTextIsolateFunc(SendPort initialReplyTo) {
         message["language"],
         message["modelType"],
       );
+      if (message["segmentationFile"] != null &&
+          message["embeddingFile"] != null) {
+        ailiaSpeechToText.diarization(
+          message["segmentationFile"],
+          message["embeddingFile"],
+        );
+      }
       return;
     }
 
@@ -120,6 +128,9 @@ void speechToTextIsolateFunc(SendPort initialReplyTo) {
       } catch (e) {
         // A failed chunk must not kill the isolate's message loop.
         print("speech transcribe error: $e");
+      } finally {
+        // The caller sends the audio captured meanwhile as the next batch.
+        answerPort.send({"drained": true});
       }
       return;
     }
@@ -139,6 +150,12 @@ class SpeechToTextIsolate {
   bool _isIntermediateFlag = false;
   bool _isInterruptFlag = false;
 
+  // 認識中に届いたマイク音声。isolateが認識を終えるたびに次のバッチとして送る
+  final List<List<double>> _pendingChunks = [];
+  int _pendingSampleRate = 0;
+  int _pendingChannels = 0;
+  bool _draining = false;
+
   Future<void> init(
     Function intermediateCallback,
     Function messageCallback,
@@ -152,9 +169,13 @@ class SpeechToTextIsolate {
     bool vadEnable,
     int envId,
     bool virtualMemory,
+    File? segmentationFile,
+    File? embeddingFile,
   ) async {
     _isTerminateFlag = false;
     _isInterruptFlag = false;
+    _pendingChunks.clear();
+    _draining = false;
     receivePort = ReceivePort();
     isolate = await Isolate.spawn(
       speechToTextIsolateFunc,
@@ -165,6 +186,10 @@ class SpeechToTextIsolate {
     interruptPort = message["interruptPort"] as SendPort;
     answerPort = ReceivePort();
     answerPort.listen((message) async {
+      if (message["drained"] == true) {
+        _onDrained();
+        return;
+      }
       if (message["intermediate"] == true) {
         _isIntermediateFlag = true;
         intermediateCallback(message["text"]);
@@ -188,7 +213,9 @@ class SpeechToTextIsolate {
       "modelType": modelType,
       "vadEnable": vadEnable,
       "envId": envId,
-      "virtualMemory": virtualMemory
+      "virtualMemory": virtualMemory,
+      "segmentationFile": segmentationFile,
+      "embeddingFile": embeddingFile,
     };
     sendPort.send(args);
 
@@ -202,20 +229,49 @@ class SpeechToTextIsolate {
       return;
     }
 
-    // 音声認識が長時間CPUを使わないようにメッセージを1秒ごとに分割する
-    int chunkSize = sampleRate;
-    for (int i = 0; i < chunk.length; i += chunkSize) {
-      final isLast = i + chunkSize >= chunk.length;
-      final end = isLast ? chunk.length : i + chunkSize;
-      var args = {
-        "answerPort": answerPort.sendPort,
-        "cmd": "transcribe",
-        "chunk": chunk.sublist(i, end),
-        "sampleRate": sampleRate,
-        "channels": channels
-      };
-      sendPort.send(args);
+    if (_isTerminateFlag) {
+      return;
     }
+
+    // 認識中に届いた音声は溜めておき、認識完了後にまとめてpushする
+    _pendingChunks.add(chunk);
+    _pendingSampleRate = sampleRate;
+    _pendingChannels = channels;
+    if (_draining) {
+      return;
+    }
+    _draining = true;
+    _sendPendingBatch();
+  }
+
+  void _sendPendingBatch() {
+    int length = 0;
+    for (final chunk in _pendingChunks) {
+      length += chunk.length;
+    }
+    final batch = Float64List(length);
+    int offset = 0;
+    for (final chunk in _pendingChunks) {
+      batch.setAll(offset, chunk);
+      offset += chunk.length;
+    }
+    _pendingChunks.clear();
+    var args = {
+      "answerPort": answerPort.sendPort,
+      "cmd": "transcribe",
+      "chunk": batch,
+      "sampleRate": _pendingSampleRate,
+      "channels": _pendingChannels
+    };
+    sendPort.send(args);
+  }
+
+  void _onDrained() {
+    if (_pendingChunks.isEmpty || _isTerminateFlag) {
+      _draining = false;
+      return;
+    }
+    _sendPendingBatch();
   }
 
   bool isTerminate() {
@@ -236,6 +292,10 @@ class SpeechToTextIsolate {
       return;
     }
     _isTerminateFlag = true;
+    // 未処理の音声をすべて投入してから認識を確定する
+    if (_pendingChunks.isNotEmpty) {
+      _sendPendingBatch();
+    }
     var args = {
       "answerPort": answerPort.sendPort,
       "cmd": "terminate",
@@ -274,7 +334,7 @@ class SpeechToTextIsolate {
 class AudioProcessingWhisperStreaming {
   final SpeechToTextIsolate _ailiaSpeechModel = SpeechToTextIsolate();
 
-  Future<void> open(File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, String lang, bool virtualMemory, bool liveTranscribe, Function intermediateCallback, Function messageCallback, Function finishCallback) async{
+  Future<void> open(File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, String lang, bool virtualMemory, bool liveTranscribe, Function intermediateCallback, Function messageCallback, Function finishCallback, {File? segmentationFile, File? embeddingFile}) async{
     int typeId = 0;
     if (type == "whisper_tiny"){
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_TINY;
@@ -310,6 +370,8 @@ class AudioProcessingWhisperStreaming {
       true,
       speechEngineEnvId(env_id),
       virtualMemory,
+      segmentationFile,
+      embeddingFile,
     );
   }
 
