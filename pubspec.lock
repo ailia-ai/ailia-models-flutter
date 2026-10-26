@@ -32,11 +32,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: set_static_input_length
-      resolved-ref: "809700254f81f38db13f4133eaeae3f4245a5322"
+      ref: "v1.6.0"
+      resolved-ref: "2358cc8f4ac813aacda7a4e8a6b29abd33a62c88"
       url: "https://github.com/ailia-ai/ailia-speech-flutter.git"
     source: git
-    version: "1.5.2"
+    version: "1.6.0"
   ailia_tokenizer:
     dependency: "direct main"
     description:

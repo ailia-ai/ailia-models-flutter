@@ -17,11 +17,18 @@ import '../utils/qnn_env.dart';
 class AudioProcessingWhisper {
   final AiliaSpeechModel _ailiaSpeechModel = AiliaSpeechModel();
 
-  List<String> getModelList(String type){
+  /// [folder, file] pairs: the VAD, then the encoder and the decoder.
+  /// On QNN a single context binary replaces the encoder and the decoder.
+  List<String> getModelList(String type, int envId){
     List<String> modelList = List<String>.empty(growable: true);
 
     modelList.add("silero-vad");
     modelList.add("silero_vad_v6_2.onnx");
+
+    if (envId == speechQnnEnvId){
+      modelList.addAll(speechQnnModelFiles(type, speechQnnSoc(type) ?? ""));
+      return modelList;
+    }
 
     if (type == "whisper_tiny"){
       modelList.add("whisper");
@@ -57,6 +64,15 @@ class AudioProcessingWhisper {
     }
 
     return modelList;
+  }
+
+  /// [folder, file] pairs of the pyannote-audio speaker diarization models:
+  /// the segmentation, then the speaker embedding.
+  List<String> getDiarizationModelList(){
+    return [
+      "pyannote-audio", "segmentation.onnx",
+      "pyannote-audio", "speaker-embedding.onnx",
+    ];
   }
 
   void _intermediateCallback(String text){
@@ -106,15 +122,8 @@ class AudioProcessingWhisper {
       return transcribeResult;
   }
 
-  Future<List<SpeechText>> transcribe(Wav wav, File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, bool virtualMemory) async{
-    final qnnSelected = isQnnEnvironment(env_id);
-    final isSenseVoice = type == "sensevoice_small";
-    // On QNN the Whisper decoder does not run, so only the encoder is
-    // placed on QNN and the engine itself (decoder / VAD) runs on the
-    // CPU. SenseVoice runs entirely on QNN.
-    final engineEnvId =
-        (qnnSelected && !isSenseVoice) ? cpuEnvironmentId() : env_id;
-    _ailiaSpeechModel.create(false, false, engineEnvId, virtualMemory:virtualMemory);
+  Future<List<SpeechText>> transcribe(Wav wav, File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, bool virtualMemory, {File? segmentationFile, File? embeddingFile}) async{
+    _ailiaSpeechModel.create(false, false, speechEngineEnvId(env_id), virtualMemory:virtualMemory);
     int typeId = 0;
     if (type == "whisper_tiny"){
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_TINY;
@@ -137,21 +146,10 @@ class AudioProcessingWhisper {
       Directory path = await getTemporaryDirectory();
       AiliaModel.setTemporaryCachePath(path.path);
     }
-    if (qnnSelected) {
-      if (isSenseVoice) {
-        // QNN needs a static input shape, so fix the input length.
-        _ailiaSpeechModel.setStaticInputLength(qnnStaticInputLengthSec);
-      } else {
-        _ailiaSpeechModel.setEnvId(
-            ailia_speech_dart.AILIA_SPEECH_MODEL_TARGET_ENCODER, env_id);
-      }
-    }
     String lang = "auto"; // auto or ja
     _ailiaSpeechModel.open(onnx_encoder_file, onnx_decoder_file, vad_file, lang, typeId);
-    if (qnnSelected) {
-      // QNN builds its graph on the first inference; warm up here so
-      // the first transcribe is not delayed.
-      _ailiaSpeechModel.warmup();
+    if (segmentationFile != null && embeddingFile != null){
+      _ailiaSpeechModel.diarization(segmentationFile, embeddingFile);
     }
 
     //_ailiaSpeechModel.setIntermediateCallback(_intermediateCallback);

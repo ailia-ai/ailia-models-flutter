@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'large_language_model/qnn_model.dart';
 import 'large_language_model/qnn_runtime.dart';
 import 'utils/qnn_device.dart';
+import 'utils/qnn_env.dart';
 import 'utils/qnn_support.dart';
 
 /// Holds the backend selections shared by every screen. The selection
@@ -19,6 +20,14 @@ class BackendState {
   static final BackendState instance = BackendState._();
 
   List<AiliaEnvironment> _envList = [];
+
+  /// Whether the open demo runs ailia Speech, which opens its own .qnn
+  /// context binaries instead of the ailia SDK QNN environments.
+  bool _speechDemo = false;
+
+  /// Whether ailia Speech has a .qnn context binary for the open demo on
+  /// this SoC; only then the selector offers its HTP (QNN) backend.
+  bool _speechSupportsQnn = false;
   final ValueNotifier<int> selectedEnvId = ValueNotifier<int>(0);
 
   List<String> _llmBackendList = [];
@@ -36,25 +45,32 @@ class BackendState {
   /// QNN provides CPU / GPU / HTP variants, but only HTP (the NPU) is
   /// meaningful for the demos; hide the QNN CPU and GPU variants from
   /// the selector.
-  static bool _isSelectable(AiliaEnvironment e) {
+  bool _isSelectable(AiliaEnvironment e) {
+    if (_speechDemo) {
+      return !e.name.toUpperCase().contains('QNN');
+    }
     return isSdkQnnEnvironmentSelectable(e.name, qnnSocName);
   }
 
   List<AiliaEnvironment> get envList {
     if (_envList.isEmpty) {
-      _envList = AiliaModel.getEnvironmentList().where(_isSelectable).toList();
-      if (_envList.isNotEmpty) {
+      _envList = AiliaModel.getEnvironmentList();
+      final list = _envList.where(_isSelectable).toList();
+      if (list.isNotEmpty) {
         // Default to the BLAS backend when available; it is much faster
         // than the plain CPU environment. The QNN build has no BLAS, so
         // fall back to the plain CPU environment rather than QNN-HTP.
-        selectedEnvId.value = _envList
+        selectedEnvId.value = list
             .firstWhere(_isBlas,
                 orElse: () =>
-                    _envList.firstWhere(_isCpu, orElse: () => _envList.first))
+                    list.firstWhere(_isCpu, orElse: () => list.first))
             .id;
       }
     }
-    return _envList;
+    return [
+      ..._envList.where(_isSelectable),
+      if (_speechDemo && _speechSupportsQnn) speechQnnEnvironment,
+    ];
   }
 
   AiliaEnvironment get selectedEnv => envList.firstWhere(
@@ -69,7 +85,11 @@ class BackendState {
   void applyModelDefault(
       {required bool preferQnn,
       bool forLlm = false,
+      String? speechModel,
       Set<String>? supportedQnnSocs}) {
+    _speechDemo = speechModel != null;
+    _speechSupportsQnn =
+        speechModel != null && preferQnn && speechQnnSoc(speechModel) != null;
     if (forLlm) {
       final soc = preferQnn ? availableWindowsQnnSoc() : null;
       _llmSupportsQnn = soc != null &&
@@ -91,7 +111,9 @@ class BackendState {
       return;
     }
     AiliaEnvironment? pick;
-    if (preferQnn) {
+    if (_speechSupportsQnn) {
+      pick = speechQnnEnvironment;
+    } else if (preferQnn && !_speechDemo) {
       for (final env in list) {
         if (env.name.toUpperCase().contains('QNN')) {
           pick = env;

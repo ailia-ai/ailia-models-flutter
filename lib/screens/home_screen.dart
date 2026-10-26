@@ -7,6 +7,7 @@ import '../large_language_model/qnn_model.dart';
 import '../sdk_status.dart';
 import '../utils/download_model.dart';
 import '../utils/qnn_device.dart';
+import '../utils/qnn_env.dart';
 import '../utils/qnn_support.dart';
 import 'demo_screen.dart';
 import 'sdk_status_actions.dart';
@@ -209,12 +210,14 @@ class ModelCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  if (showQnnMark(
-                    qnnSupported: model.qnnSupported,
-                    usesLlmBackend: model.usesLlmBackend,
-                    soc: qnnSocName,
-                    supportedQnnSocs: model.supportedQnnSocs,
-                  )) ...[
+                  if (model.isSpeechToText
+                      ? model.qnnSupported && speechQnnSoc(model.id) != null
+                      : showQnnMark(
+                          qnnSupported: model.qnnSupported,
+                          usesLlmBackend: model.usesLlmBackend,
+                          soc: qnnSocName,
+                          supportedQnnSocs: model.supportedQnnSocs,
+                        )) ...[
                     Tooltip(
                       message: 'Runs on the QNN (NPU) backend',
                       child: Container(

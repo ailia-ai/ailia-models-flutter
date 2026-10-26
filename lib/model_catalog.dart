@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'large_language_model/qnn_model.dart';
+import 'utils/qnn_env.dart';
 
 /// What kind of input the demo consumes. Used to decide which input
 /// source toggle (image/webcam or audio/mic) is shown on the demo screen.
@@ -37,7 +38,8 @@ class ModelInfo {
       category == 'Large Language Model' ||
       category == 'VLM' ||
       category == 'ALM' ||
-      category == 'Tool Use';
+      category == 'Tool Use' ||
+      category == 'Voice Agent';
 
   /// Text-only LLMs get the multi-turn chat UI.
   bool get isChat =>
@@ -77,12 +79,13 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'whisper_small', 'Whisper Small', 'Speech To Text', ModelInputKind.audio),
   ModelInfo('whisper_medium', 'Whisper Medium', 'Speech To Text',
-      ModelInputKind.audio),
-  ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo',
-      'Speech To Text', ModelInputKind.audio),
-  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text',
       ModelInputKind.audio,
-      qnnSupported: true),
+      qnnSupported: true, supportedQnnSocs: speechQnnSocs),
+  ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo',
+      'Speech To Text', ModelInputKind.audio,
+      qnnSupported: true, supportedQnnSocs: speechQnnSocs),
+  ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text',
+      ModelInputKind.audio),
   ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing',
       ModelInputKind.text),
   ModelInfo('fugumt-en-ja', 'FuguMT EN-JA', 'Natural Language Processing',
@@ -125,6 +128,8 @@ const List<ModelInfo> modelCatalog = [
       defaultInputText: 'エアコンの温度を20度にしてください',
       qnnSupported: true,
       supportedQnnSocs: windowsQnnSocs),
+  ModelInfo('voice-agent', 'Voice Agent', 'Voice Agent', ModelInputKind.audio,
+      qnnSupported: true),
 ];
 
 /// Remote (folder, filename) pairs for the image demos, shared by the
@@ -180,6 +185,8 @@ IconData categoryIcon(String category) {
       return Icons.record_voice_over;
     case 'Tool Use':
       return Icons.build_outlined;
+    case 'Voice Agent':
+      return Icons.record_voice_over;
     case 'Large Language Model':
       return Icons.chat_bubble_outline;
     case 'VLM':
@@ -212,6 +219,7 @@ Color categoryColor(BuildContext context, String category) {
     case 'VLM':
     case 'ALM':
     case 'Tool Use':
+    case 'Voice Agent':
       return Colors.indigo;
     case 'Diffusion':
       return Colors.deepPurple;
