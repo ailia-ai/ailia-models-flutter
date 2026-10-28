@@ -66,6 +66,15 @@ class AudioProcessingWhisper {
     return modelList;
   }
 
+  /// [folder, file] pairs of the pyannote-audio speaker diarization models:
+  /// the segmentation, then the speaker embedding.
+  List<String> getDiarizationModelList(){
+    return [
+      "pyannote-audio", "segmentation.onnx",
+      "pyannote-audio", "speaker-embedding.onnx",
+    ];
+  }
+
   void _intermediateCallback(String text){
     print(text);
   }
@@ -113,7 +122,7 @@ class AudioProcessingWhisper {
       return transcribeResult;
   }
 
-  Future<List<SpeechText>> transcribe(Wav wav, File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, bool virtualMemory) async{
+  Future<List<SpeechText>> transcribe(Wav wav, File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, bool virtualMemory, {File? segmentationFile, File? embeddingFile}) async{
     _ailiaSpeechModel.create(false, false, speechEngineEnvId(env_id), virtualMemory:virtualMemory);
     int typeId = 0;
     if (type == "whisper_tiny"){
@@ -139,6 +148,9 @@ class AudioProcessingWhisper {
     }
     String lang = "auto"; // auto or ja
     _ailiaSpeechModel.open(onnx_encoder_file, onnx_decoder_file, vad_file, lang, typeId);
+    if (segmentationFile != null && embeddingFile != null){
+      _ailiaSpeechModel.diarization(segmentationFile, embeddingFile);
+    }
 
     //_ailiaSpeechModel.setIntermediateCallback(_intermediateCallback);
 
