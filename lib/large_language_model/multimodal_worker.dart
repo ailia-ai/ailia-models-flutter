@@ -6,6 +6,7 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 import 'generation_metrics.dart';
 import 'media_prompt.dart';
 import 'mtp.dart';
+import 'qnn_model.dart';
 
 /// Keeps the native model, projector and conversation alive across turns.
 class MultimodalWorker {
@@ -84,6 +85,10 @@ class MultimodalWorker {
     pending?.completeError(error);
   }
 
+  /// Stops the reply being generated between tokens. The model and the
+  /// conversation stay loaded; the partial reply completes the run.
+  void stop() => _commands?.send(_stopCommand);
+
   void cancel() {
     _commands?.send(null);
     _commands = null;
@@ -92,6 +97,8 @@ class MultimodalWorker {
     _fail(StateError('Media inference cancelled'));
   }
 }
+
+const _stopCommand = 'stop';
 
 /// Optional factories allow the real worker lifecycle to be tested without FFI.
 void runMultimodalWorker(SendPort events,
@@ -106,6 +113,7 @@ void runMultimodalWorker(SendPort events,
   final history = <Map<String, dynamic>>[];
   var busy = false;
   var closing = false;
+  var stopping = false;
 
   void close() {
     try {
@@ -118,6 +126,10 @@ void runMultimodalWorker(SendPort events,
 
   events.send(commands.sendPort);
   commands.listen((dynamic value) async {
+    if (value == _stopCommand) {
+      stopping = true;
+      return;
+    }
     if (value == null) {
       closing = true;
       if (!busy) close();
@@ -125,6 +137,8 @@ void runMultimodalWorker(SendPort events,
     }
     if (busy || closing) return;
     busy = true;
+    // A stop that arrived after the previous reply finished is stale.
+    stopping = false;
     try {
       final request = value as Map;
       final key = (
@@ -132,7 +146,8 @@ void runMultimodalWorker(SendPort events,
         request['mmprojPath'] as String,
         request['backend'] as String,
         request['nCtx'] as int,
-        // Changing the assistant requires reopening the model.
+        // Empty when MTP is off; the assistant cannot be detached, so a
+        // change reopens the model.
         request['mtpPath'] as String? ?? '',
       );
       if (loaded != key) {
@@ -141,12 +156,14 @@ void runMultimodalWorker(SendPort events,
         // A reopened model starts a new conversation.
         history.clear();
         events.send({'type': 'loading'});
+        llmContextLength(key.$1, key.$3);
+        llmContextLength(key.$2, key.$3);
         final backends = (backendList ?? AiliaLLMModel.getBackendList)();
         if (!backends.contains(key.$3)) {
           throw StateError('Backend ${key.$3} not available: $backends');
         }
         model.open(key.$1, key.$4, backend: key.$3);
-        // Open the assistant before the projector and the first prompt.
+        // The assistant must be opened before the projector.
         mtpError = openMtpAssistant(model, key.$5);
         model.openMultimodalProjectorFile(key.$2);
         loaded = key;
@@ -184,7 +201,7 @@ void runMultimodalWorker(SendPort events,
       }
       final text = StringBuffer();
       await Future<void>.delayed(Duration.zero);
-      while (!closing) {
+      while (!closing && !stopping) {
         final delta = model.generate();
         if (delta == null) break;
         timing.recordToken();

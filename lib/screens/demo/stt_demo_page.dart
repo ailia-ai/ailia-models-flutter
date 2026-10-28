@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:ailia_speech/ailia_speech.dart' as ailia_speech_dart;
 import 'package:ailia_speech/ailia_speech_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,7 +39,11 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
 
   bool _useMic = false;
   bool _virtualMemory = false;
-  bool _liveTranscribe = false;
+  bool _liveTranscribe = true;
+  // Speaker diarization (pyannote-audio); labels each line with "S0:".
+  bool _diarization = false;
+  // The setting the current transcript was recognized with.
+  bool _diarizationActive = false;
 
   final AudioProcessingWhisperStreaming _whisperStreaming =
       AudioProcessingWhisperStreaming();
@@ -153,10 +158,32 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
     _whisperStreaming.send(result, _micSampleRate);
   }
 
+  /// Downloads the diarization models when enabled and returns
+  /// (segmentation, embedding), or (null, null) when disabled.
+  /// Returns null when the download failed.
+  Future<(File?, File?)?> _prepareDiarization(bool enabled) async {
+    if (!enabled) {
+      return (null, null);
+    }
+    List<String> modelList = AudioProcessingWhisper().getDiarizationModelList();
+    if (!await _session.downloadModelList(modelList)) {
+      return null;
+    }
+    return (
+      File(await getModelPath(modelList[1])),
+      File(await getModelPath(modelList[3])),
+    );
+  }
+
   Future<void> _runStreaming() async {
     List<String> modelList =
-        AudioProcessingWhisper().getModelList(widget.model.id);
+        AudioProcessingWhisper().getModelList(widget.model.id, selectedEnvId);
     if (!await _session.downloadModelList(modelList)) {
+      return;
+    }
+    final diarization = _diarization;
+    final diarizationFiles = await _prepareDiarization(diarization);
+    if (diarizationFiles == null) {
       return;
     }
 
@@ -164,7 +191,10 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
 
     File vadFile = File(await getModelPath(modelList[1]));
     File onnxEncoderFile = File(await getModelPath(modelList[3]));
-    File onnxDecoderFile = File(await getModelPath(modelList[5]));
+    // The QNN context binary holds both the encoder and the decoder.
+    File onnxDecoderFile = modelList.length > 5
+        ? File(await getModelPath(modelList[5]))
+        : onnxEncoderFile;
 
     // The Stop button handles termination via _stopRecognition; ignore
     // a Run that lands while stopping or already recording.
@@ -174,6 +204,7 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
 
     safeSetState(() {
       _transcript.clear();
+      _diarizationActive = diarization;
     });
 
     String lang = "ja";
@@ -188,7 +219,9 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
         _liveTranscribe,
         _intermediateCallback,
         _messageCallback,
-        _finishCallback);
+        _finishCallback,
+        segmentationFile: diarizationFiles.$1,
+        embeddingFile: diarizationFiles.$2);
     final recorder = AudioRecorder();
     try {
       // Asks for the microphone permission where required (iOS/Android).
@@ -225,24 +258,38 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
   }
 
   String _formatTranscriptLine(SpeechText text) {
-    return "[${_formatTimeStamp(text.timeStampBegin)} - "
-        "${_formatTimeStamp(text.timeStampEnd)}] ${text.text}";
+    final stamp = "[${_formatTimeStamp(text.timeStampBegin)} - "
+        "${_formatTimeStamp(text.timeStampEnd)}]";
+    if (_diarizationActive &&
+        text.personId != ailia_speech_dart.AILIA_SPEECH_SPEAKER_ID_UNKNOWN) {
+      return "$stamp S${text.personId}: ${text.text}";
+    }
+    return "$stamp ${text.text}";
   }
 
   Future<void> _runFile() async {
     ByteData data = await rootBundle.load("assets/demo.wav");
     final wav = Wav.read(data.buffer.asUint8List());
     AudioProcessingWhisper whisper = AudioProcessingWhisper();
-    List<String> modelList = whisper.getModelList(widget.model.id);
+    List<String> modelList =
+        whisper.getModelList(widget.model.id, selectedEnvId);
     safeSetState(() {
       _transcript.clear();
     });
     if (!await _session.downloadModelList(modelList)) {
       return;
     }
+    final diarization = _diarization;
+    final diarizationFiles = await _prepareDiarization(diarization);
+    if (diarizationFiles == null) {
+      return;
+    }
     File vadFile = File(await getModelPath(modelList[1]));
     File onnxEncoderFile = File(await getModelPath(modelList[3]));
-    File onnxDecoderFile = File(await getModelPath(modelList[5]));
+    // The QNN context binary holds both the encoder and the decoder.
+    File onnxDecoderFile = modelList.length > 5
+        ? File(await getModelPath(modelList[5]))
+        : onnxEncoderFile;
     int startTime = DateTime.now().millisecondsSinceEpoch;
     List<SpeechText> texts = await whisper.transcribe(
         wav,
@@ -251,9 +298,12 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
         vadFile,
         selectedEnvId,
         widget.model.id,
-        _virtualMemory);
+        _virtualMemory,
+        segmentationFile: diarizationFiles.$1,
+        embeddingFile: diarizationFiles.$2);
     int endTime = DateTime.now().millisecondsSinceEpoch;
     safeSetState(() {
+      _diarizationActive = diarization;
       for (int i = 0; i < texts.length; i++) {
         _transcript.add(_formatTranscriptLine(texts[i]));
       }
@@ -295,6 +345,22 @@ class _SttDemoPageState extends State<SttDemoPage> with SafeSetStateMixin {
                 _virtualMemory = v;
               });
             },
+          ),
+        ),
+        SizedBox(
+          width: 320,
+          child: SwitchListTile(
+            dense: true,
+            title: const Text('Speaker diarization'),
+            value: _diarization,
+            // Applied when the next recognition starts.
+            onChanged: _recognitionActive
+                ? null
+                : (v) {
+                    safeSetState(() {
+                      _diarization = v;
+                    });
+                  },
           ),
         ),
         if (_useMic)

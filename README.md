@@ -26,6 +26,10 @@ flutter run
 
 ## Models
 
+### Voice Agent
+
+See [VOICEAGENT.md](VOICEAGENT.md) for setup, usage and testing.
+
 ### Speech To Text
 
 | | Model | Exported From | Supported Ailia Version | Blog |
@@ -58,27 +62,27 @@ flutter run
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [gemma2](/lib/large_language_model/) | [gemma-2-2b](https://huggingface.co/google/gemma-2-2b) | llama.cpp | 1.1.0 and later| |
-| [gemma4-e2b](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | 1.4.2 and later | |
-| [gemma4-e4b](/lib/large_language_model/) | [gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it) | llama.cpp | 1.5.0 and later | |
+| [gemma4-e2b](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | 1.4.2 and later | |
+| [gemma4-e4b](/lib/large_language_model/) | [gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it) | llama.cpp / QNN | 1.5.0 and later | |
 
 ### VLM
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [gemma3-multimodal](/lib/large_language_model/) | [gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) | llama.cpp | | |
-| [gemma4-e2b-vlm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | | |
+| [gemma4-e2b-vlm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | | |
 
 ### ALM
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
-| [gemma4-e2b-alm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | | |
+| [gemma4-e2b-alm](/lib/large_language_model/) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | | |
 
 ### Tool Use
 
 | | Model | Exported From | Supported Ailia Version | Blog |
 |:-----------|------------:|:------------:|:------------:|:------------:|
-| [gemma4-e2b-tool-use](/lib/large_language_model/tool_use_model.dart) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp | 1.5.0 and later | |
+| [gemma4-e2b-tool-use](/lib/large_language_model/tool_use_model.dart) | [gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) | llama.cpp / QNN | 1.5.0 and later | |
 
 ### Natural Language Processing
 
@@ -119,6 +123,10 @@ flutter run
 |:-----------|------------:|:------------:|:------------:|:------------:|
 | [tacotron2](/lib/text_to_speech/) | [Tacotron2](https://github.com/NVIDIA/tacotron2) | Pytorch | 1.2.15 and later | [JP](https://tech.ailia.ai/tacotron2-%E6%B3%A2%E5%BD%A2%E5%A4%89%E6%8F%9B%E3%82%92ai%E3%81%A7%E8%A1%8C%E3%81%86%E9%AB%98%E5%93%81%E8%B3%AA%E3%81%AA%E9%9F%B3%E5%A3%B0%E5%90%88%E6%88%90%E3%83%A2%E3%83%87%E3%83%AB-bc592217a399) |
 | [gpt-sovits](/lib/text_to_speech/) | [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | Pytorch | 1.4.0 and later | [JP](https://tech.ailia.ai/gpt-sovits-%E3%83%95%E3%82%A1%E3%82%A4%E3%83%B3%E3%83%81%E3%83%A5%E3%83%BC%E3%83%8B%E3%83%B3%E3%82%B0%E3%81%A7%E3%81%8D%E3%82%8B0%E3%82%B7%E3%83%A7%E3%83%83%E3%83%88%E3%81%AE%E9%9F%B3%E5%A3%B0%E5%90%88%E6%88%90%E3%83%A2%E3%83%87%E3%83%AB-2212eeb5ad20) |
+
+## QNN Setup
+
+See [QNN.md](QNN.md) for setup instructions.
 
 ## Import ailia SDK
 

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'large_language_model/qnn_model.dart';
+import 'utils/qnn_env.dart';
+
 /// What kind of input the demo consumes. Used to decide which input
 /// source toggle (image/webcam or audio/mic) is shown on the demo screen.
 enum ModelInputKind { image, audio, text, imageText }
@@ -17,8 +20,17 @@ class ModelInfo {
   /// source, ...).
   final String? defaultInputText;
 
+  /// Whether the model runs on the QNN (HTP) backend. QNN-ready models
+  /// show a QNN badge on the home screen and default to the QNN
+  /// backend when their demo opens.
+  final bool qnnSupported;
+  final Set<String>? supportedQnnSocs;
+
   const ModelInfo(this.id, this.name, this.category, this.input,
-      {this.sampleAsset, this.defaultInputText});
+      {this.sampleAsset,
+      this.defaultInputText,
+      this.qnnSupported = false,
+      this.supportedQnnSocs});
 
   bool get isSpeechToText => category == 'Speech To Text';
   bool get isTextToSpeech => category == 'Text To Speech';
@@ -26,7 +38,8 @@ class ModelInfo {
       category == 'Large Language Model' ||
       category == 'VLM' ||
       category == 'ALM' ||
-      category == 'Tool Use';
+      category == 'Tool Use' ||
+      category == 'Voice Agent';
 
   /// Text-only LLMs get the multi-turn chat UI.
   bool get isChat =>
@@ -56,8 +69,8 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo('lw-human-pose', 'Lightweight Human Pose', 'Pose Estimation',
       ModelInputKind.image,
       sampleAsset: 'assets/person.jpg'),
-  ModelInfo('sdxl', 'Stable Diffusion XL', 'Diffusion',
-      ModelInputKind.imageText,
+  ModelInfo(
+      'sdxl', 'Stable Diffusion XL', 'Diffusion', ModelInputKind.imageText,
       sampleAsset: 'assets/astronaut.jpg',
       defaultInputText:
           'Astronaut in a jungle, cold color palette, muted colors, detailed, 8k'),
@@ -66,9 +79,11 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'whisper_small', 'Whisper Small', 'Speech To Text', ModelInputKind.audio),
   ModelInfo('whisper_medium', 'Whisper Medium', 'Speech To Text',
-      ModelInputKind.audio),
+      ModelInputKind.audio,
+      qnnSupported: true, supportedQnnSocs: speechQnnSocs),
   ModelInfo('whisper_large_v3_turbo', 'Whisper Large V3 Turbo',
-      'Speech To Text', ModelInputKind.audio),
+      'Speech To Text', ModelInputKind.audio,
+      qnnSupported: true, supportedQnnSocs: speechQnnSocs),
   ModelInfo('sensevoice_small', 'SenseVoice Small', 'Speech To Text',
       ModelInputKind.audio),
   ModelInfo('multilingual-e5', 'Multilingual-E5', 'Natural Language Processing',
@@ -96,16 +111,25 @@ const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text),
   ModelInfo(
-      'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text),
+      'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text,
+      qnnSupported: true),
   ModelInfo(
-      'gemma4-e4b', 'Gemma 4 E4B', 'Large Language Model', ModelInputKind.text),
+      'gemma4-e4b', 'Gemma 4 E4B', 'Large Language Model', ModelInputKind.text,
+      qnnSupported: true, supportedQnnSocs: {'sc8380xp'}),
   ModelInfo(
       'gemma3-multimodal', 'Gemma 3 4B VLM', 'VLM', ModelInputKind.imageText),
   ModelInfo(
-      'gemma4-e2b-vlm', 'Gemma 4 E2B VLM', 'VLM', ModelInputKind.imageText),
-  ModelInfo('gemma4-e2b-alm', 'Gemma 4 E2B ALM', 'ALM', ModelInputKind.audio),
+      'gemma4-e2b-vlm', 'Gemma 4 E2B VLM', 'VLM', ModelInputKind.imageText,
+      qnnSupported: true),
+  ModelInfo('gemma4-e2b-alm', 'Gemma 4 E2B ALM', 'ALM', ModelInputKind.audio,
+      qnnSupported: true),
   ModelInfo('gemma4-e2b-tool-use', 'Gemma 4 E2B Tool Use', 'Tool Use',
-      ModelInputKind.text, defaultInputText: 'エアコンの温度を20度にしてください'),
+      ModelInputKind.text,
+      defaultInputText: 'エアコンの温度を20度にしてください',
+      qnnSupported: true,
+      supportedQnnSocs: windowsQnnSocs),
+  ModelInfo('voice-agent', 'Voice Agent', 'Voice Agent', ModelInputKind.audio,
+      qnnSupported: true),
 ];
 
 /// Remote (folder, filename) pairs for the image demos, shared by the
@@ -161,6 +185,8 @@ IconData categoryIcon(String category) {
       return Icons.record_voice_over;
     case 'Tool Use':
       return Icons.build_outlined;
+    case 'Voice Agent':
+      return Icons.record_voice_over;
     case 'Large Language Model':
       return Icons.chat_bubble_outline;
     case 'VLM':
@@ -193,6 +219,7 @@ Color categoryColor(BuildContext context, String category) {
     case 'VLM':
     case 'ALM':
     case 'Tool Use':
+    case 'Voice Agent':
       return Colors.indigo;
     case 'Diffusion':
       return Colors.deepPurple;
