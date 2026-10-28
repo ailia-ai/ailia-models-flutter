@@ -5,7 +5,7 @@ PODS:
     - FlutterMacOS
   - ailia_llm (0.0.1):
     - FlutterMacOS
-  - ailia_speech (0.0.1):
+  - ailia_speech (1.6.0):
     - FlutterMacOS
   - ailia_tokenizer (0.0.1):
     - FlutterMacOS
@@ -47,7 +47,7 @@ SPEC CHECKSUMS:
   ailia: 9836b7ce6ec432bfecb1ed5ec5a3d1cb4d648bad
   ailia_audio: debcc199da67cdfef543165c5b07f2a434f681df
   ailia_llm: 7d4318f26a9816d050d9bcf57a4741b2df2e07c8
-  ailia_speech: 65688df86e9c46fa80de5b7c4df40373dc7366bd
+  ailia_speech: 4fc445bfa9ff8049c2eda6ecacd3dc5e739558ae
   ailia_tokenizer: e76ee5c78d90e093189526bdd56b87dca25fe6ee
   ailia_tracker: 6a8ff509676f91c3c5d88ef2a1a5c0d7aea1f260
   ailia_voice: 2ed4de5c9dee2b2be67c8877d8076fc4518268ac

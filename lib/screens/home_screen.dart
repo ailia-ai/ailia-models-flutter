@@ -3,8 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../model_catalog.dart';
+import '../large_language_model/qnn_model.dart';
 import '../sdk_status.dart';
 import '../utils/download_model.dart';
+import '../utils/qnn_device.dart';
+import '../utils/qnn_env.dart';
+import '../utils/qnn_support.dart';
 import 'demo_screen.dart';
 import 'sdk_status_actions.dart';
 
@@ -91,6 +95,21 @@ class _HomeScreenState extends State<HomeScreen> {
         downloaded.add(entry.key);
       }
     }
+    bool qnnBody(String type, String soc) =>
+        File('$base${qnnTextModelFiles(type, soc)[1]}').existsSync();
+    if (windowsQnnSocs.any((soc) => qnnBody('gemma4-e2b', soc))) {
+      downloaded.add('gemma4-e2b');
+      downloaded.add('gemma4-e2b-tool-use');
+    }
+    if (windowsQnnSocs.any((soc) =>
+        qnnBody('gemma4-e2b', soc) &&
+        File('$base${qnnMmprojFiles(soc)[1]}').existsSync())) {
+      downloaded.add('gemma4-e2b-vlm');
+      downloaded.add('gemma4-e2b-alm');
+    }
+    if (qnnBody('gemma4-e4b', 'sc8380xp')) {
+      downloaded.add('gemma4-e4b');
+    }
     if (mounted) {
       setState(() {
         _downloaded = downloaded;
@@ -104,7 +123,9 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('ailia MODELS Flutter'),
-        actions: const [SdkStatusActions()],
+        actions: [
+          SdkStatusActions(onSettingsClosed: _refreshDownloaded),
+        ],
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
@@ -189,6 +210,38 @@ class ModelCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
+                  if (model.isSpeechToText
+                      ? model.qnnSupported && speechQnnSoc(model.id) != null
+                      : showQnnMark(
+                          qnnSupported: model.qnnSupported,
+                          usesLlmBackend: model.usesLlmBackend,
+                          soc: qnnSocName,
+                          supportedQnnSocs: model.supportedQnnSocs,
+                        )) ...[
+                    Tooltip(
+                      message: 'Runs on the QNN (NPU) backend',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: Theme.of(context).colorScheme.tertiary),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'QNN',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.tertiary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   if (downloaded)
                     Tooltip(
                       message: 'Model downloaded',

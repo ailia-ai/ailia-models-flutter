@@ -2,6 +2,8 @@ import 'package:ailia/ailia_license.dart';
 import 'package:flutter/material.dart';
 
 import '../../backend_state.dart';
+import '../../large_language_model/qnn_model.dart';
+import '../../large_language_model/qnn_runtime.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/mtp.dart';
 import '../../large_language_model/tool_use_model.dart';
@@ -54,7 +56,7 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
   }
 
   Future<void> _ensureModel(String backend) async {
-    final useMtp = mtp && supportsMtp(widget.model.id);
+    final useMtp = mtp && mtpAvailable(widget.model.id, backend);
     // The MTP assistant cannot be detached, so a change reopens the model.
     if (_worker != null && _backend == backend && _workerMtp == useMtp) return;
     if (_worker != null) {
@@ -63,16 +65,19 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
       _messages.clear();
       _temperature = null;
     }
+    final files =
+        ToolUseModel.modelFiles(backend, soc: availableWindowsQnnSoc());
     await AiliaLicense.checkAndDownloadLicense();
     if (!mounted || _cancelled) return;
     final file = await _session.downloadFile(
-        'https://storage.googleapis.com/ailia-models/gemma/${ToolUseModel.modelFile}',
-        ToolUseModel.modelFile);
+        'https://storage.googleapis.com/ailia-models/${files[0]}/${files[1]}',
+        files[1]);
     if (!mounted || _cancelled) return;
     if (file == null) throw StateError('Model download failed');
     String? mtpPath;
     if (useMtp) {
-      final assistant = ToolUseModel.mtpFiles();
+      final assistant =
+          ToolUseModel.mtpFiles(backend, soc: availableWindowsQnnSoc());
       final assistantFile = await _session.downloadFile(
           'https://storage.googleapis.com/ailia-models/${assistant[0]}/${assistant[1]}',
           assistant[1]);
@@ -155,6 +160,7 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
     _decodeTokens = 0;
     _decodeSeconds = 0;
     final stopwatch = Stopwatch()..start();
+    final firstMessage = _messages.length;
     try {
       await _ensureModel(backend);
       if (!mounted || _cancelled || _worker == null) return;
@@ -173,7 +179,15 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
         _messages.remove(_assistant);
         _assistant = null;
       }
-      _session.showError(error);
+      if (_cancelled && mounted) {
+        // The model drops a stopped request from its history, so drop its
+        // messages too and give the question back for editing.
+        _messages.removeRange(firstMessage, _messages.length);
+        _input.text = text;
+        _session.showResult('Stopped.');
+      } else {
+        _session.showError(error);
+      }
     } finally {
       if (_cancelled) _session.clearStatus();
       safeSetState(() {
@@ -219,6 +233,7 @@ class _ToolUseDemoPageState extends State<ToolUseDemoPage>
               const SizedBox(width: 16),
               MtpSwitch(
                   value: mtp,
+                  available: mtpAvailableFor(widget.model.id),
                   onChanged: _busy
                       ? null
                       : (value) => safeSetState(() {

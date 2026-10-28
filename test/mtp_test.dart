@@ -1,6 +1,7 @@
 import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:ailia_models_flutter/large_language_model/mtp.dart';
 import 'package:ailia_models_flutter/large_language_model/multimodal_model_files.dart';
+import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
 import 'package:ailia_models_flutter/large_language_model/tool_use_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,24 +27,24 @@ void main() {
     ]) {
       expect(supportsMtp(type), isTrue);
       expect(
-          mtpAssistantFiles(type), ['gemma', 'mtp-gemma-4-E2B-it-Q4_0.gguf']);
+          mtpAssistantFiles(type, 'CPU'), ['gemma', 'mtp-gemma-4-E2B-it-Q4_0.gguf']);
     }
-    expect(mtpAssistantFiles('gemma4-e4b'),
+    expect(mtpAssistantFiles('gemma4-e4b', 'CPU'),
         ['gemma', 'mtp-gemma-4-E4B-it-Q4_0.gguf']);
-    expect(ToolUseModel.mtpFiles(), mtpAssistantFiles('gemma4-e2b'));
+    expect(ToolUseModel.mtpFiles('CPU'), mtpAssistantFiles('gemma4-e2b', 'CPU'));
     expect(supportsMtp('gemma2'), isFalse);
-    expect(() => mtpAssistantFiles('gemma2'), throwsUnsupportedError);
+    expect(() => mtpAssistantFiles('gemma2', 'CPU'), throwsUnsupportedError);
   });
 
   test('only supported multimodal models download an optional assistant', () {
     for (final type in ['gemma4-e2b-vlm', 'gemma4-e2b-alm']) {
-      final files = multimodalModelFiles(type);
-      expect(multimodalModelFiles(type, mtp: true),
-          [...files, ...mtpAssistantFiles(type)]);
+      final files = multimodalModelFiles(type, 'CPU');
+      expect(multimodalModelFiles(type, 'CPU', mtp: true),
+          [...files, ...mtpAssistantFiles(type, 'CPU')]);
       expect(files, hasLength(4));
     }
-    expect(multimodalModelFiles('gemma3-multimodal', mtp: true),
-        multimodalModelFiles('gemma3-multimodal'));
+    expect(multimodalModelFiles('gemma3-multimodal', 'CPU', mtp: true),
+        multimodalModelFiles('gemma3-multimodal', 'CPU'));
   });
 
   test('assistant is optional and failure returns a displayable error', () {

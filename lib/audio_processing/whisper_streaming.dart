@@ -10,6 +10,8 @@ import 'package:ailia_speech/ailia_speech.dart' as ailia_speech_dart;
 import 'package:ailia_speech/ailia_speech_model.dart';
 import 'package:ailia/ailia_model.dart';
 
+import '../utils/qnn_env.dart';
+
 void speechToTextIsolateFunc(SendPort initialReplyTo) {
   final receivePort = ReceivePort();
   final interruptPort = ReceivePort();
@@ -295,7 +297,20 @@ class AudioProcessingWhisperStreaming {
       Directory path = await getTemporaryDirectory();
       AiliaModel.setTemporaryCachePath(path.path);
     }
-    _ailiaSpeechModel.init(intermediateCallback, messageCallback, finishCallback, onnx_encoder_file, onnx_decoder_file, vad_file, typeId, liveTranscribe, lang, true, env_id, virtualMemory);
+    _ailiaSpeechModel.init(
+      intermediateCallback,
+      messageCallback,
+      finishCallback,
+      onnx_encoder_file,
+      onnx_decoder_file,
+      vad_file,
+      typeId,
+      liveTranscribe,
+      lang,
+      true,
+      speechEngineEnvId(env_id),
+      virtualMemory,
+    );
   }
 
   void send(List<double> pcm, int samplesPerSecond){

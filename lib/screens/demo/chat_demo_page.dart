@@ -7,6 +7,7 @@ import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/large_language_model.dart';
 import '../../large_language_model/mtp.dart';
+import '../../large_language_model/qnn_model.dart';
 import '../../model_catalog.dart';
 import 'chat_bubble.dart';
 import 'demo_session.dart';
@@ -33,6 +34,10 @@ class _ChatDemoPageState extends State<ChatDemoPage>
   String? _llmBackend;
   bool? _llmMtp;
   bool _generating = false;
+
+  /// True while the reply streams in; the stop button is shown then.
+  bool _streaming = false;
+  bool _stopRequested = false;
   final List<Map<String, String>> _messages = [];
   final TextEditingController _textController = TextEditingController();
   String _systemPrompt = 'あなたは親切なアシスタントです。';
@@ -64,7 +69,7 @@ class _ChatDemoPageState extends State<ChatDemoPage>
   Future<void> _ensureModel() async {
     // ailia LLM has its own backend list; use the LLM selection.
     String selectedBackend = BackendState.instance.selectedLlmBackend.value;
-    final useMtp = mtp && supportsMtp(widget.model.id);
+    final useMtp = mtp && mtpAvailable(widget.model.id, selectedBackend);
     if (_llm != null) {
       if (selectedBackend == _llmBackend && useMtp == _llmMtp) {
         return;
@@ -80,7 +85,7 @@ class _ChatDemoPageState extends State<ChatDemoPage>
     }
     await AiliaLicense.checkAndDownloadLicense();
     final llm = LargeLanguageModel();
-    final modelList = llm.getModelList(widget.model.id);
+    final modelList = llm.getModelList(widget.model.id, selectedBackend);
     final url =
         "https://storage.googleapis.com/ailia-models/${modelList[0]}/${modelList[1]}";
     final modelFile = await _session.downloadFile(url, modelList[1]);
@@ -89,7 +94,8 @@ class _ChatDemoPageState extends State<ChatDemoPage>
     }
     File? assistantFile;
     if (useMtp) {
-      final assistant = llm.getMtpAssistantFiles(widget.model.id);
+      final assistant =
+          llm.getMtpAssistantFiles(widget.model.id, selectedBackend);
       assistantFile = await _session.downloadFile(
           "https://storage.googleapis.com/ailia-models/${assistant[0]}/${assistant[1]}",
           assistant[1]);
@@ -102,7 +108,10 @@ class _ChatDemoPageState extends State<ChatDemoPage>
       return;
     }
 
-    _session.setStatus("Loading model with selected backend...");
+    _session.setStatus('Model Loading...');
+    // Paint the loading label before the synchronous native open blocks the UI.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
     try {
       llm.openWithBackendName(modelFile, selectedBackend,
           mtpAssistant: assistantFile);
@@ -196,6 +205,10 @@ class _ChatDemoPageState extends State<ChatDemoPage>
       // rebuilding the screen per token.
       final reply = StringBuffer();
       int lastPaintMs = 0;
+      safeSetState(() {
+        _streaming = true;
+        _stopRequested = false;
+      });
       void paintReply() {
         safeSetState(() {
           _messages.last['content'] = reply.toString();
@@ -211,7 +224,8 @@ class _ChatDemoPageState extends State<ChatDemoPage>
           lastPaintMs = nowMs;
           paintReply();
         }
-      }, shouldContinue: () => mounted);
+        // A stopped reply keeps its partial text in the conversation.
+      }, shouldContinue: () => mounted && !_stopRequested);
       if (mounted) {
         paintReply();
       }
@@ -223,6 +237,7 @@ class _ChatDemoPageState extends State<ChatDemoPage>
       _session.showError("Inference Error: $e");
     } finally {
       _generating = false;
+      _streaming = false;
       if (mounted) {
         safeSetState(() {});
       } else {
@@ -245,6 +260,7 @@ class _ChatDemoPageState extends State<ChatDemoPage>
               if (supportsMtp(widget.model.id))
                 MtpSwitch(
                   value: mtp,
+                  available: mtpAvailableFor(widget.model.id),
                   onChanged: _generating
                       ? null
                       : (value) => safeSetState(() {
@@ -287,6 +303,9 @@ class _ChatDemoPageState extends State<ChatDemoPage>
           ChatInputRow(
             controller: _textController,
             onSend: _generating ? null : _sendMessage,
+            onStop: _streaming
+                ? () => safeSetState(() => _stopRequested = true)
+                : null,
           ),
         ],
       ),

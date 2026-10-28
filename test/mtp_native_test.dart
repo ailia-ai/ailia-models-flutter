@@ -11,6 +11,7 @@ import 'package:ailia_llm/ailia_llm_model.dart';
 import 'package:ailia_models_flutter/large_language_model/large_language_model.dart';
 import 'package:ailia_models_flutter/large_language_model/multimodal_large_language_model.dart';
 import 'package:ailia_models_flutter/large_language_model/mtp.dart';
+import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
 import 'package:ailia_models_flutter/large_language_model/tool_use_model.dart';
 import 'package:ailia_models_flutter/large_language_model/tool_use_worker.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,7 +24,7 @@ void main() {
   String path(String name) => '$dir/$name';
   String backend() => AiliaLLMModel.getBackendList()
       .firstWhere((n) => n == requested || n.startsWith('$requested:'));
-  String assistant(String type) => path(mtpAssistantFiles(type)[1]);
+  String assistant(String type) => path(mtpAssistantFiles(type, backend())[1]);
 
   for (final mtp in [false, true]) {
     test('Chat generates with MTP ${mtp ? 'on' : 'off'}', () async {

@@ -1,14 +1,24 @@
-import 'mtp.dart';
+import 'qnn_model.dart';
 
-/// Body and projector, followed by the assistant when MTP is requested.
-List<String> multimodalModelFiles(String type, {bool mtp = false}) {
-  final files = _multimodalModelFiles(type);
-  return mtp && supportsMtp(type)
-      ? [...files, ...mtpAssistantFiles(type)]
-      : files;
+/// [folder, body, folder, mmproj] plus [folder, assistant] when [mtp] is
+/// requested and the model has an MTP assistant.
+List<String> multimodalModelFiles(String type, String backend,
+    {String? soc, bool mtp = false}) {
+  final files = _multimodalModelFiles(type, backend, soc: soc);
+  if (mtp && mtpAvailable(type, backend)) {
+    return [...files, ...mtpAssistantFiles(type, backend, soc: soc)];
+  }
+  return files;
 }
 
-List<String> _multimodalModelFiles(String type) {
+List<String> _multimodalModelFiles(String type, String backend, {String? soc}) {
+  if (isLlmQnnBackend(backend)) {
+    if (type != 'gemma4-e2b-vlm' && type != 'gemma4-e2b-alm') {
+      throw UnsupportedError('HTP supports only Gemma 4 E2B VLM / ALM.');
+    }
+    final textFiles = qnnTextModelFiles('gemma4-e2b', soc ?? '');
+    return [...textFiles, ...qnnMmprojFiles(soc ?? '')];
+  }
   switch (type) {
     case 'gemma3-multimodal':
       return [

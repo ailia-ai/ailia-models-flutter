@@ -7,6 +7,7 @@ import '../../backend_state.dart';
 import '../../large_language_model/generation_metrics.dart';
 import '../../large_language_model/multimodal_large_language_model.dart';
 import '../../large_language_model/mtp.dart';
+import '../../large_language_model/qnn_model.dart';
 import '../../model_catalog.dart';
 import '../../utils/download_model.dart';
 import 'camera_input.dart';
@@ -51,6 +52,9 @@ class _VlmDemoPageState extends State<VlmDemoPage>
   (String, bool)? _conversationConfig;
 
   bool _useCamera = false;
+
+  /// True while a reply is generated; the stop button is shown then.
+  bool _generating = false;
   ui.Image? _image;
 
   @override
@@ -163,7 +167,7 @@ class _VlmDemoPageState extends State<VlmDemoPage>
     if (query.isEmpty || _session.processing) return;
     await _session.run(() async {
       final backend = BackendState.instance.selectedLlmBackend.value;
-      final modelList = _vlm.getModelList(widget.model.id, mtp);
+      final modelList = _vlm.getModelList(widget.model.id, backend, mtp);
       if (!await _session.downloadModelList(modelList) || !mounted) return;
       final modelFile = File(await getModelPath(modelList[1]));
       final mmprojFile = File(await getModelPath(modelList[3]));
@@ -199,7 +203,8 @@ class _VlmDemoPageState extends State<VlmDemoPage>
           model: modelFile,
           mmproj: mmprojFile,
           backend: backend,
-          nCtx: MultimodalLargeLanguageModel.contextSize(widget.model.id),
+          nCtx: MultimodalLargeLanguageModel.contextSize(
+              widget.model.id, modelFile.path, backend),
           systemPrompt: '',
           inputText: query,
           imagePath: imagePath,
@@ -208,6 +213,7 @@ class _VlmDemoPageState extends State<VlmDemoPage>
               _session.setStatus('Loading model with selected backend...'),
           onModelLoaded: (error) {
             mtpError = error;
+            safeSetState(() => _generating = true);
             if (imagePath != null) _imageSent = true;
             _session.setStatus(
                 imagePath == null ? 'Generating...' : 'Image Processing...');
@@ -237,6 +243,8 @@ class _VlmDemoPageState extends State<VlmDemoPage>
           _imageSent = false;
         });
         rethrow;
+      } finally {
+        safeSetState(() => _generating = false);
       }
       _session.clearStatus();
       safeSetState(() {});
@@ -285,6 +293,7 @@ class _VlmDemoPageState extends State<VlmDemoPage>
               listenable: _session,
               builder: (context, _) => MtpSwitch(
                 value: mtp,
+                available: mtpAvailableFor(widget.model.id),
                 onChanged: _session.processing
                     ? null
                     : (value) => safeSetState(() {
@@ -327,6 +336,8 @@ class _VlmDemoPageState extends State<VlmDemoPage>
               controller: _queryController,
               label: 'Query',
               onSend: _session.processing ? null : _send,
+              // A stopped reply keeps its partial text in the conversation.
+              onStop: _generating ? _vlm.stop : null,
             ),
           ],
         ),

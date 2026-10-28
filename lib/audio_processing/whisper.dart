@@ -12,14 +12,23 @@ import 'package:ailia_speech/ailia_speech.dart' as ailia_speech_dart;
 import 'package:ailia_speech/ailia_speech_model.dart';
 import 'package:ailia/ailia_model.dart';
 
+import '../utils/qnn_env.dart';
+
 class AudioProcessingWhisper {
   final AiliaSpeechModel _ailiaSpeechModel = AiliaSpeechModel();
 
-  List<String> getModelList(String type){
+  /// [folder, file] pairs: the VAD, then the encoder and the decoder.
+  /// On QNN a single context binary replaces the encoder and the decoder.
+  List<String> getModelList(String type, int envId){
     List<String> modelList = List<String>.empty(growable: true);
 
     modelList.add("silero-vad");
     modelList.add("silero_vad_v6_2.onnx");
+
+    if (envId == speechQnnEnvId){
+      modelList.addAll(speechQnnModelFiles(type, speechQnnSoc(type) ?? ""));
+      return modelList;
+    }
 
     if (type == "whisper_tiny"){
       modelList.add("whisper");
@@ -105,7 +114,7 @@ class AudioProcessingWhisper {
   }
 
   Future<List<SpeechText>> transcribe(Wav wav, File onnx_encoder_file, File onnx_decoder_file, File vad_file, int env_id, String type, bool virtualMemory) async{
-    _ailiaSpeechModel.create(false, false, env_id, virtualMemory:virtualMemory);
+    _ailiaSpeechModel.create(false, false, speechEngineEnvId(env_id), virtualMemory:virtualMemory);
     int typeId = 0;
     if (type == "whisper_tiny"){
       typeId = ailia_speech_dart.AILIA_SPEECH_MODEL_TYPE_WHISPER_MULTILINGUAL_TINY;
