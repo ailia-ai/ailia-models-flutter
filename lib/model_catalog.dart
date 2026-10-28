@@ -49,9 +49,9 @@ class ModelInfo {
 const List<ModelInfo> modelCatalog = [
   ModelInfo(
       'resnet50', 'ResNet50', 'Image Classification', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo('vit', 'ViT-B/16', 'Image Classification', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo(
       'sam2', 'Segment Anything 2', 'Image Segmentation', ModelInputKind.image,
       sampleAsset: 'assets/truck.jpg'),
@@ -59,16 +59,16 @@ const List<ModelInfo> modelCatalog = [
       ModelInputKind.image,
       sampleAsset: 'assets/truck.jpg', defaultInputText: 'truck'),
   ModelInfo('u2net', 'U-2-Net', 'Background Removal', ModelInputKind.image,
-      sampleAsset: 'assets/input_u2net.png'),
+      sampleAsset: 'assets/input_u2net.png', qnnSupported: true),
   ModelInfo('yolox', 'YOLOX-S', 'Object Detection', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo('detic', 'Detic', 'Object Detection', ModelInputKind.image,
       sampleAsset: 'assets/desk.jpg'),
   ModelInfo('bytetrack', 'ByteTrack', 'Object Tracking', ModelInputKind.image,
-      sampleAsset: 'assets/clock.jpg'),
+      sampleAsset: 'assets/clock.jpg', qnnSupported: true),
   ModelInfo('lw-human-pose', 'Lightweight Human Pose', 'Pose Estimation',
       ModelInputKind.image,
-      sampleAsset: 'assets/person.jpg'),
+      sampleAsset: 'assets/person.jpg', qnnSupported: true),
   ModelInfo(
       'sdxl', 'Stable Diffusion XL', 'Diffusion', ModelInputKind.imageText,
       sampleAsset: 'assets/astronaut.jpg',

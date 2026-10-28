@@ -1,8 +1,10 @@
 # QNN Setup
 
-QNN (HTP) is available for ailia LLM (LLM, VLM, ALM and Tool Use) and
-ailia Speech (Whisper Medium / Large V3 Turbo). The ailia SDK QNN backend
-for the other models is not included in this release.
+The ailia SDK QNN selector and model-list badges are disabled on SoCs without
+HTP FP16 support (including QCS6490). The per-SoC policy follows
+[ailia-models-kotlin PR #33](https://github.com/ailia-ai/ailia-models-kotlin/pull/33)
+and QAIRT 2.47. Unknown SoCs retain the existing behavior. This restriction
+does not apply to ailia LLM: LLM, VLM, ALM and Tool Use keep their QNN support.
 
 ## Windows ARM64 LLM
 

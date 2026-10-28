@@ -6,7 +6,7 @@ E2B (default) or E4B, and a separate backend for recognition, responses and
 GPT-SoVITS V2-Pro Distill Base synthesis. MTP defaults to on for E2B and off for
 E4B; each model remembers its setting while this screen is open. The QNN choices
 follow this Flutter app's existing platform/SoC support (converted Speech and
-LLM models on supported Windows ARM64 devices; synthesis runs on CPU/GPU).
+LLM models on supported Windows ARM64 devices; synthesis requires SDK FP16).
 Unsupported model/backend combinations disable MTP or fall back to CPU.
 
 Press **開始** and allow microphone access. Japanese speech passes through
