@@ -14,7 +14,6 @@ import ailia_tracker
 import ailia_voice
 import audioplayers_darwin
 import camera_macos
-import path_provider_foundation
 import record_macos
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
@@ -27,6 +26,5 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   AiliaVoicePlugin.register(with: registry.registrar(forPlugin: "AiliaVoicePlugin"))
   AudioplayersDarwinPlugin.register(with: registry.registrar(forPlugin: "AudioplayersDarwinPlugin"))
   CameraMacosPlugin.register(with: registry.registrar(forPlugin: "CameraMacosPlugin"))
-  PathProviderPlugin.register(with: registry.registrar(forPlugin: "PathProviderPlugin"))
   RecordMacOsPlugin.register(with: registry.registrar(forPlugin: "RecordMacOsPlugin"))
 }
