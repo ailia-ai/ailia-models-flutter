@@ -59,6 +59,11 @@ void main() {
       expect(g.variants.map((m) => groupOf(m)), everyElement(same(g)));
     }
     expect(idsOf('SenseVoice Small'), ['sensevoice_small']);
-    expect(idsOf('Gemma 4 E2B ALM'), ['gemma4-e2b-alm']);
+    // ALM and Tool Use share the card name but stay separate cards.
+    final gemma4 = modelGroups.where((g) => g.name == 'Gemma 4').toList();
+    expect(gemma4.map((g) => g.variants.map((m) => m.id).toList()), [
+      ['gemma4-e2b-alm'],
+      ['gemma4-e2b-tool-use'],
+    ]);
   });
 }

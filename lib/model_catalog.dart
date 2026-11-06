@@ -29,8 +29,9 @@ class ModelInfo {
   final Set<String>? supportedQnnSocs;
 
   /// Card name shared by the variants of one model family. Consecutive
-  /// catalog entries with the same group are shown as one card on the
-  /// home screen, and the demo screen offers a selector between them.
+  /// catalog entries with the same group and category are shown as one
+  /// card on the home screen, and the demo screen offers a selector
+  /// between them.
   final String? group;
 
   /// The variant a grouped card opens with.
@@ -80,6 +81,8 @@ const _fugumtGroup = 'FuguMT';
 const _gptSovitsGroup = 'GPT-SoVITS';
 const _llmGroup = 'Gemma 2 / 4';
 const _vlmGroup = 'Gemma 3 / 4';
+// Single-model cards that only need the family name (ALM, Tool Use).
+const _gemma4Card = 'Gemma 4';
 
 const List<ModelInfo> modelCatalog = [
   ModelInfo(
@@ -174,12 +177,13 @@ const List<ModelInfo> modelCatalog = [
       qnnSupported: true,
       group: _vlmGroup, groupDefault: true),
   ModelInfo('gemma4-e2b-alm', 'Gemma 4 E2B ALM', 'ALM', ModelInputKind.audio,
-      qnnSupported: true),
+      qnnSupported: true, group: _gemma4Card),
   ModelInfo('gemma4-e2b-tool-use', 'Gemma 4 E2B Tool Use', 'Tool Use',
       ModelInputKind.text,
       defaultInputText: 'エアコンの温度を20度にしてください',
       qnnSupported: true,
-      supportedQnnSocs: windowsQnnSocs),
+      supportedQnnSocs: windowsQnnSocs,
+      group: _gemma4Card),
   ModelInfo('voice-agent', 'Voice Agent', 'Voice Agent', ModelInputKind.audio,
       qnnSupported: true),
 ];
@@ -209,7 +213,9 @@ final List<ModelGroup> modelGroups = () {
   final groups = <ModelGroup>[];
   for (final model in modelCatalog) {
     final last = groups.lastOrNull;
-    if (model.group != null && last?.first.group == model.group) {
+    if (model.group != null &&
+        last?.first.group == model.group &&
+        last?.category == model.category) {
       last!.variants.add(model);
     } else {
       groups.add(ModelGroup([model]));
