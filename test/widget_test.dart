@@ -41,8 +41,8 @@ void main() {
     final card = tester.widget<ModelCard>(find.ancestor(
         of: find.text('Gemma 4 E2B Tool Use'),
         matching: find.byType(ModelCard)));
-    expect(card.model.category, 'Tool Use');
-    expect(card.model.usesLlmBackend, isTrue);
+    expect(card.group.category, 'Tool Use');
+    expect(card.group.first.usesLlmBackend, isTrue);
     expect(tester.takeException(), isNull);
   });
   for (final filename in [
