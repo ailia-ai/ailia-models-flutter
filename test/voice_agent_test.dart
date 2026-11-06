@@ -591,7 +591,37 @@ void main() {
     expect(voiceAgentPhotoData(jpeg), base64Encode(jpeg));
   });
   test(
-    'synthesis overlaps generation, holds playback, and bounds queued PCM',
+    'playback starts during generation and queued PCM stays bounded',
+    () async {
+      final worker = FakeVoiceWorker();
+      final played = <VoiceAgentAudio>[];
+      final playing = Completer<void>();
+      final queue = VoiceAgentSpeechQueue(
+        worker: worker,
+        open: () async {},
+        play: (audio) async {
+          played.add(audio);
+          await playing.future;
+        },
+        stopPlayback: () async {},
+      );
+      // Generation is still running: complete is false, finish() not called.
+      queue.update('一。二。三。四。五', complete: false);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(played, hasLength(1));
+      // One clip playing and at most two finished clips waiting.
+      expect(worker.synthesized, ['一。', '二。', '三。']);
+      playing.complete();
+      queue.update('一。二。三。四。五。', complete: true);
+      await queue.finish().timeout(const Duration(seconds: 2));
+      expect(worker.synthesized, ['一。', '二。', '三。', '四。', '五。']);
+      expect(played, hasLength(5));
+      await queue.close();
+      expect(worker.released, isTrue);
+    },
+  );
+  test(
+    'all phrases are synthesized and played after finish',
     () async {
       final worker = FakeVoiceWorker();
       final played = <VoiceAgentAudio>[];
@@ -604,9 +634,6 @@ void main() {
         stopPlayback: () async {},
       );
       queue.update('一。二。三。四。', complete: true);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-      expect(worker.synthesized, ['一。', '二。']);
-      expect(played, isEmpty);
       await queue.finish().timeout(const Duration(seconds: 2));
       expect(worker.synthesized, ['一。', '二。', '三。', '四。']);
       expect(played, hasLength(4));
