@@ -267,6 +267,8 @@ class VoiceAgentController extends ChangeNotifier {
   Future<String> _recognize(int turn) async {
     _state(VoiceAgentState.submitting);
     _check(turn);
+    // A new utterance is being recognized: drop the previous exchange.
+    input = output = '';
     _state(VoiceAgentState.recognizing);
     final text = await _models!.call('recognize') as String;
     _check(turn);
