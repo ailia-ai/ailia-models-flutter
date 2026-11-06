@@ -236,7 +236,19 @@ void _runVoiceAgentWorker(SendPort events) {
       case 'recognize':
         check();
         try {
-          return speechTurn!.finish(check).join('\n').trim();
+          // Send the GetText result as soon as it exists: the empty
+          // intermediate text arrives during transcribe, and the reply
+          // below comes only after the drain, reset and model close.
+          return speechTurn!
+              .finish(
+                check,
+                onText: (lines) => events.send({
+                  'type': 'input',
+                  'text': lines.join('\n').trim(),
+                }),
+              )
+              .join('\n')
+              .trim();
         } finally {
           closeSpeech();
         }

@@ -287,6 +287,31 @@ void main() {
       }
     },
   );
+  test('recognized text is reported after each transcribe', () {
+    final engine = FakeSpeech();
+    final turn = VoiceAgentSpeechTurn(engine);
+    final reports = <List<String>>[];
+    final calls = <int>[];
+    expect(
+      turn.finish(
+        () {},
+        onText: (lines) {
+          reports.add(lines);
+          calls.add(engine.calls.length);
+        },
+      ),
+      ['1', '0'],
+    );
+    expect(reports, [
+      ['1'],
+      ['1', '0'],
+    ]);
+    // Each report follows its transcribe, before the drain ends.
+    for (final at in calls) {
+      expect(engine.calls[at - 1], 'transcribe');
+    }
+    expect(engine.calls.last, 'reset');
+  });
   test('finalize/drain/complete/reset order matches the non-LIVE protocol', () {
     final engine = FakeSpeech();
     final turn = VoiceAgentSpeechTurn(engine);

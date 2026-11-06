@@ -32,7 +32,13 @@ class VoiceAgentSpeechTurn {
     return engine.buffered;
   }
 
-  List<String> finish(void Function() checkActive) {
+  /// [onText] receives the text recognized so far after each transcribe,
+  /// before the remaining drain and reset, so the display can replace the
+  /// empty intermediate text without waiting for the turn to close.
+  List<String> finish(
+    void Function() checkActive, {
+    void Function(List<String> lines)? onText,
+  }) {
     if (_finalized) throw StateError('音声入力はすでに確定しています');
     checkActive();
     _finalized = true;
@@ -41,6 +47,7 @@ class VoiceAgentSpeechTurn {
     while (engine.buffered) {
       checkActive();
       lines.addAll(engine.transcribe());
+      onText?.call(List.unmodifiable(lines));
     }
     if (!engine.complete) throw StateError('音声認識が完了状態になりませんでした');
     engine.reset();
