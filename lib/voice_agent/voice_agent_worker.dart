@@ -127,7 +127,9 @@ class _SpeechEngine implements VoiceAgentSpeechEngine {
   void push(List<double> audio, int rate, int channels) =>
       model.pushInputData(audio, rate, channels);
   @override
-  bool get buffered => model.isBuffered();
+  // VadBuffered reports only the end of an utterance (and stays set after
+  // finalize while data remains), never just 30 seconds of accumulation.
+  bool get buffered => model.isVadBuffered();
   @override
   void finalize() => model.finalizeInputData();
   @override

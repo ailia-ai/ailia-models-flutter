@@ -20,7 +20,7 @@ abstract interface class VoiceAgentSpeechEngine {
   void reset();
 }
 
-/// Non-LIVE Silero protocol: first Buffered → finalize → drain → Complete → reset.
+/// Non-LIVE Silero protocol: first VadBuffered → finalize → drain → Complete → reset.
 class VoiceAgentSpeechTurn {
   VoiceAgentSpeechTurn(this.engine);
   final VoiceAgentSpeechEngine engine;
