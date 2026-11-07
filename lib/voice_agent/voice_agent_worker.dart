@@ -127,7 +127,9 @@ class _SpeechEngine implements VoiceAgentSpeechEngine {
   void push(List<double> audio, int rate, int channels) =>
       model.pushInputData(audio, rate, channels);
   @override
-  bool get buffered => model.isBuffered();
+  // VadBuffered reports only the end of an utterance (and stays set after
+  // finalize while data remains), never just 30 seconds of accumulation.
+  bool get buffered => model.isVadBuffered();
   @override
   void finalize() => model.finalizeInputData();
   @override
@@ -234,7 +236,19 @@ void _runVoiceAgentWorker(SendPort events) {
       case 'recognize':
         check();
         try {
-          return speechTurn!.finish(check).join('\n').trim();
+          // Send the GetText result as soon as it exists: the empty
+          // intermediate text arrives during transcribe, and the reply
+          // below comes only after the drain, reset and model close.
+          return speechTurn!
+              .finish(
+                check,
+                onText: (lines) => events.send({
+                  'type': 'input',
+                  'text': lines.join('\n').trim(),
+                }),
+              )
+              .join('\n')
+              .trim();
         } finally {
           closeSpeech();
         }

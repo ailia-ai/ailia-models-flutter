@@ -49,7 +49,7 @@ class _TtsDemoPageState extends State<TtsDemoPage> with SafeSetStateMixin {
   int _runCounter = 0;
 
   bool get _isV2Pro => widget.model.id == "gpt-sovits-v2pro-ja";
-  _V2ProVariant _v2ProVariant = _V2ProVariant.normal;
+  _V2ProVariant _v2ProVariant = _V2ProVariant.distillSmall;
 
   int get _modelType {
     switch (widget.model.id) {

@@ -123,7 +123,8 @@ class VoiceAgentPlayer {
 }
 
 /// LLM events only enqueue text. Synthesis and playback run independently, with
-/// at most two finished PCM clips waiting. Playback starts after generation.
+/// at most two finished PCM clips waiting. Playback starts with the first clip,
+/// while the LLM may still be generating.
 class VoiceAgentSpeechQueue {
   VoiceAgentSpeechQueue({
     required this.worker,
@@ -142,7 +143,6 @@ class VoiceAgentSpeechQueue {
   final _text = VoiceAgentSpeechText();
   final _phrases = StreamController<String>();
   final _clips = StreamController<VoiceAgentAudio>();
-  final _playbackReady = Completer<void>();
   final _waiting = <Completer<void>>[];
   late final Future<void> _producer;
   late final Future<void> _consumer;
@@ -168,7 +168,6 @@ class VoiceAgentSpeechQueue {
   void _failed(Object error) {
     _error ??= error;
     _stopped = true;
-    if (!_playbackReady.isCompleted) _playbackReady.complete();
     _wake();
     unawaited(_phrases.close());
   }
@@ -205,7 +204,6 @@ class VoiceAgentSpeechQueue {
   Future<void> _consume() async {
     try {
       await for (final clip in _clips.stream) {
-        await _playbackReady.future;
         _queuedClips--;
         _wake();
         if (!_stopped) await play(clip);
@@ -218,7 +216,6 @@ class VoiceAgentSpeechQueue {
   Future<void> finish() async {
     _finished = true;
     unawaited(_phrases.close());
-    if (!_playbackReady.isCompleted) _playbackReady.complete();
     await Future.wait([_producer, _consumer]);
     if (_error != null) throw _error!;
     if (_stopped) throw const VoiceAgentCancelled();
@@ -228,7 +225,6 @@ class VoiceAgentSpeechQueue {
     _stopped = true;
     worker.cancel();
     unawaited(_phrases.close());
-    if (!_playbackReady.isCompleted) _playbackReady.complete();
     _wake();
     await stopPlayback();
     await Future.wait([_producer, _consumer]);
