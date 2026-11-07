@@ -5,6 +5,7 @@ import '../model_catalog.dart';
 import 'demo/alm_demo_page.dart';
 import 'demo/chat_demo_page.dart';
 import 'demo/diffusion_demo_page.dart';
+import 'demo/model_variant_selector.dart';
 import 'demo/nlp_demo_page.dart';
 import 'demo/stt_demo_page.dart';
 import 'demo/tts_demo_page.dart';
@@ -17,6 +18,10 @@ import 'demo/vlm_demo_page.dart';
 /// category. Each page owns its input UI, inference glue and result
 /// presentation, built on the shared pieces in demo/ (DemoSession,
 /// CameraInput, the waveform and the common page scaffold).
+///
+/// [model] is the variant opened first; when its card groups several
+/// models the page scaffold offers a selector, and a change rebuilds the
+/// page from scratch for the selected model.
 class DemoScreen extends StatefulWidget {
   const DemoScreen({super.key, required this.model});
 
@@ -27,22 +32,44 @@ class DemoScreen extends StatefulWidget {
 }
 
 class _DemoScreenState extends State<DemoScreen> {
+  late ModelInfo _model = widget.model;
+  late final List<ModelInfo> _variants = groupOf(widget.model).variants;
+
   @override
   void initState() {
     super.initState();
-    // Each demo starts on its default backend: QNN (HTP) for the
-    // QNN-ready models, the CPU backend for everything else.
+    _applyBackendDefault();
+  }
+
+  /// Each demo starts on its default backend: QNN (HTP) for the
+  /// QNN-ready models, the CPU backend for everything else.
+  void _applyBackendDefault() {
     BackendState.instance.applyModelDefault(
-      preferQnn: widget.model.qnnSupported,
-      forLlm: widget.model.usesLlmBackend,
-      speechModel: widget.model.isSpeechToText ? widget.model.id : null,
-      supportedQnnSocs: widget.model.supportedQnnSocs,
+      preferQnn: _model.qnnSupported,
+      forLlm: _model.usesLlmBackend,
+      speechModel: _model.isSpeechToText ? _model.id : null,
+      supportedQnnSocs: _model.supportedQnnSocs,
     );
+  }
+
+  void _select(ModelInfo model) {
+    _model = model;
+    _applyBackendDefault();
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final model = widget.model;
+    return ModelVariantScope(
+      variants: _variants,
+      selected: _model,
+      onSelected: _select,
+      // A new key disposes the previous variant's page (and its models).
+      child: KeyedSubtree(key: ValueKey(_model.id), child: _buildPage(_model)),
+    );
+  }
+
+  Widget _buildPage(ModelInfo model) {
     if (model.category == 'Voice Agent') {
       return const VoiceAgentDemoPage();
     }

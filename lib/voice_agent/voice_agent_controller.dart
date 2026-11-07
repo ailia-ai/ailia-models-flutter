@@ -45,7 +45,6 @@ class VoiceAgentController extends ChangeNotifier {
   Future<void>? _micStopping;
   StreamSubscription<Uint8List>? _micSubscription;
   StreamController<Float64List>? _mic;
-  Timer? _recordingLimit;
   Directory? _cache;
   VoiceAgentSpeechQueue? _speechQueue;
   Future<void>? _task;
@@ -268,6 +267,8 @@ class VoiceAgentController extends ChangeNotifier {
   Future<String> _recognize(int turn) async {
     _state(VoiceAgentState.submitting);
     _check(turn);
+    // A new utterance is being recognized: drop the previous exchange.
+    input = output = '';
     _state(VoiceAgentState.recognizing);
     final text = await _models!.call('recognize') as String;
     _check(turn);
@@ -286,7 +287,6 @@ class VoiceAgentController extends ChangeNotifier {
     _mic = mic;
     _state(VoiceAgentState.listening);
     var skip = _player!.remainingSettleMs * 16;
-    var recorded = 0;
     int? pendingByte;
     final opening = recorder.startStream(
       const RecordConfig(
@@ -316,13 +316,11 @@ class VoiceAgentController extends ChangeNotifier {
         skip -= drop;
         final accepted = pcm.sublist(drop);
         if (accepted.isEmpty) return;
-        recorded += accepted.length;
         final enableSend = !canSend;
         canSend = true;
         _waveform(accepted);
         if (enableSend) _notify();
         mic.add(accepted);
-        if (recorded >= 16000 * 30) unawaited(send());
       },
       onError: (Object error) {
         if (!mic.isClosed) mic.addError(error);
@@ -331,11 +329,8 @@ class VoiceAgentController extends ChangeNotifier {
         if (!mic.isClosed) unawaited(mic.close());
       },
     );
-    // Capture queues while Whisper initializes, bounded by the 30-second limit.
-    _recordingLimit = Timer(
-      const Duration(seconds: 30),
-      () => unawaited(send()),
-    );
+    // Capture queues while Whisper initializes. There is no length limit:
+    // the turn ends when VAD detects the end of the utterance or on send().
     var consuming = false;
     try {
       await _openSpeech(turn);
@@ -368,8 +363,6 @@ class VoiceAgentController extends ChangeNotifier {
   });
 
   Future<void> _closeMic() async {
-    _recordingLimit?.cancel();
-    _recordingLimit = null;
     final mic = _mic;
     _mic = null;
     if (mic != null && !mic.isClosed) unawaited(mic.close());
@@ -473,6 +466,9 @@ class VoiceAgentController extends ChangeNotifier {
     output = '';
     _state(VoiceAgentState.thinking);
     _modelEvents(turn);
+    // Clips play as soon as they are synthesized, so speaking can start
+    // while Gemma is still generating.
+    var generating = true;
     if (_config.speechOutput) {
       _speechQueue = VoiceAgentSpeechQueue(
         worker: _voice!,
@@ -480,24 +476,35 @@ class VoiceAgentController extends ChangeNotifier {
           await _voice!.call('voiceOpen', _voiceArgs);
           _check(turn);
         },
-        play: (audio) => _play(audio, turn, VoiceAgentState.speaking),
+        play: (audio) async {
+          await _play(audio, turn, VoiceAgentState.speaking);
+          if (generating) _state(VoiceAgentState.thinking);
+        },
         stopPlayback: _player!.stop,
       );
     }
-    final answer =
-        await _models!.call('reply', {
-              'input': utterance,
-              'body': _llmFiles[0],
-              'projector': _llmFiles[1],
-              'mtp': _llmFiles.length > 2 ? _llmFiles[2] : null,
-              'backend': _config.llmBackend,
-            })
-            as String;
+    final String answer;
+    try {
+      answer =
+          await _models!.call('reply', {
+                'input': utterance,
+                'body': _llmFiles[0],
+                'projector': _llmFiles[1],
+                'mtp': _llmFiles.length > 2 ? _llmFiles[2] : null,
+                'backend': _config.llmBackend,
+              })
+              as String;
+    } finally {
+      generating = false;
+    }
     _check(turn);
     output = answer;
     _notify();
     if (_speechQueue != null) {
-      _state(VoiceAgentState.synthesizing);
+      // Keep "speaking" while a clip is still playing.
+      if (state != VoiceAgentState.speaking) {
+        _state(VoiceAgentState.synthesizing);
+      }
       await _speechQueue!.finish();
       _check(turn);
     }

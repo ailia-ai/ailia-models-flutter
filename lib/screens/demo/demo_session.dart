@@ -8,6 +8,7 @@ import '../../backend_state.dart';
 import '../../model_catalog.dart';
 import '../../license_error_dialog.dart';
 import '../../utils/download_model.dart';
+import 'model_variant_selector.dart';
 
 /// The ailia environment selected in the top bar.
 int get selectedEnvId => BackendState.instance.selectedEnvId.value;
@@ -190,7 +191,8 @@ class DemoPanel extends StatelessWidget {
 }
 
 /// Common chrome shared by the demo pages: the app bar with the
-/// backend selector, the category chip, the page content and the
+/// backend selector, the category chip, the model selector of grouped
+/// cards, the page content and the
 /// status / error / result panels fed from [session].
 class DemoPageScaffold extends StatelessWidget {
   const DemoPageScaffold({
@@ -238,6 +240,7 @@ class DemoPageScaffold extends StatelessWidget {
                   label: Text(model.category),
                 ),
                 const SizedBox(height: 8),
+                ModelVariantSelector(session: session),
                 ...children,
                 ListenableBuilder(
                   listenable: session,

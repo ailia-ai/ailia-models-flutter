@@ -6,9 +6,6 @@ import '../model_catalog.dart';
 import '../large_language_model/qnn_model.dart';
 import '../sdk_status.dart';
 import '../utils/download_model.dart';
-import '../utils/qnn_device.dart';
-import '../utils/qnn_env.dart';
-import '../utils/qnn_support.dart';
 import 'demo_screen.dart';
 import 'sdk_status_actions.dart';
 
@@ -42,8 +39,9 @@ const Map<String, String> _markerFiles = {
   'gemma4-e2b-alm': 'gemma-4-E2B-it-mmproj-F16.gguf',
 };
 
-/// Top screen: model cards grouped by category. Selecting a card
-/// navigates to the demo screen for that model.
+/// Top screen: one card per model, or per model family for grouped
+/// variants (see [modelGroups]). Selecting a card navigates to the demo
+/// screen, which offers the family's variants in a selector.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -135,12 +133,12 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
-        itemCount: modelCatalog.length,
+        itemCount: modelGroups.length,
         itemBuilder: (context, index) {
-          final model = modelCatalog[index];
+          final group = modelGroups[index];
           return ModelCard(
-            model: model,
-            downloaded: _downloaded.contains(model.id),
+            group: group,
+            downloaded: group.variants.any((m) => _downloaded.contains(m.id)),
             onReturned: _refreshDownloaded,
           );
         },
@@ -152,18 +150,20 @@ class _HomeScreenState extends State<HomeScreen> {
 class ModelCard extends StatelessWidget {
   const ModelCard({
     super.key,
-    required this.model,
+    required this.group,
     this.downloaded = false,
     this.onReturned,
   });
 
-  final ModelInfo model;
+  final ModelGroup group;
+
+  /// Whether any variant of the card has been downloaded.
   final bool downloaded;
   final VoidCallback? onReturned;
 
   @override
   Widget build(BuildContext context) {
-    final color = categoryColor(context, model.category);
+    final color = categoryColor(context, group.category);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -171,7 +171,7 @@ class ModelCard extends StatelessWidget {
           Navigator.of(context)
               .push(
                 MaterialPageRoute(
-                  builder: (context) => DemoScreen(model: model),
+                  builder: (context) => DemoScreen(model: group.initial),
                 ),
               )
               .then((_) => onReturned?.call());
@@ -183,11 +183,11 @@ class ModelCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(categoryIcon(model.category), size: 18, color: color),
+                  Icon(categoryIcon(group.category), size: 18, color: color),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      model.category,
+                      group.category,
                       style: Theme.of(context)
                           .textTheme
                           .labelSmall
@@ -199,7 +199,7 @@ class ModelCard extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                model.name,
+                group.name,
                 style: Theme.of(context)
                     .textTheme
                     .titleMedium
@@ -210,14 +210,7 @@ class ModelCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  if (model.isSpeechToText
-                      ? model.qnnSupported && speechQnnSoc(model.id) != null
-                      : showQnnMark(
-                          qnnSupported: model.qnnSupported,
-                          usesLlmBackend: model.usesLlmBackend,
-                          soc: qnnSocName,
-                          supportedQnnSocs: model.supportedQnnSocs,
-                        )) ...[
+                  if (group.qnnAvailable) ...[
                     Tooltip(
                       message: 'Runs on the QNN (NPU) backend',
                       child: Container(

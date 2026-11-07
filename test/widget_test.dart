@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ailia_models_flutter/main.dart';
 import 'package:ailia_models_flutter/screens/home_screen.dart';
 
+final toolUseCard = find.byWidgetPredicate((widget) =>
+    widget is ModelCard && widget.group.first.id == 'gemma4-e2b-tool-use');
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
@@ -29,20 +32,18 @@ void main() {
     documents.deleteSync(recursive: true);
   });
 
-  testWidgets('home lists models including Gemma 4 E2B Tool Use',
+  testWidgets('home lists models including the Gemma 4 Tool Use card',
       (tester) async {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
     expect(find.text('ailia MODELS Flutter'), findsOneWidget);
     expect(find.text('ResNet50'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Gemma 4 E2B Tool Use'), 400,
+    await tester.scrollUntilVisible(toolUseCard, 400,
         scrollable: find.byType(Scrollable));
-    final card = tester.widget<ModelCard>(find.ancestor(
-        of: find.text('Gemma 4 E2B Tool Use'),
-        matching: find.byType(ModelCard)));
-    expect(card.model.category, 'Tool Use');
-    expect(card.model.usesLlmBackend, isTrue);
+    final card = tester.widget<ModelCard>(toolUseCard);
+    expect(card.group.category, 'Tool Use');
+    expect(card.group.first.usesLlmBackend, isTrue);
     expect(tester.takeException(), isNull);
   });
   for (final filename in [
@@ -58,11 +59,9 @@ void main() {
       File('${directory.path}/$filename').writeAsBytesSync([]);
       await tester.pumpWidget(const MyApp());
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Gemma 4 E2B Tool Use'), 400,
+      await tester.scrollUntilVisible(toolUseCard, 400,
           scrollable: find.byType(Scrollable));
-      final card = tester.widget<ModelCard>(find.ancestor(
-          of: find.text('Gemma 4 E2B Tool Use'),
-          matching: find.byType(ModelCard)));
+      final card = tester.widget<ModelCard>(toolUseCard);
       expect(card.downloaded, isTrue);
     });
   }
