@@ -24,10 +24,10 @@ packages:
     description:
       path: "."
       ref: main
-      resolved-ref: bd1940f9d8bb9b23da9e54d8527c9cb3148d30b2
+      resolved-ref: cd5f75ed09c3d3829215d164c24aaed6cb776e18
       url: "https://github.com/ailia-ai/ailia-llm-flutter.git"
     source: git
-    version: "1.5.2"
+    version: "1.5.3"
   ailia_speech:
     dependency: "direct main"
     description:
