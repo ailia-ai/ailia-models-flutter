@@ -7,6 +7,15 @@ bool isLlmQnnBackend(String backend) {
 
 const windowsQnnSocs = {'sc8380xp', 'qcs6490'};
 
+/// Whether VLM / ALM / Voice Agent on [soc] must open with QNN graph
+/// switching enabled. Since ailia LLM 1.5.3 the text and media contexts stay
+/// loaded together when switching is off, and on QCS6490 (Windows ARM64) the
+/// media prompt then fails with AILIA_LLM_STATUS_ERROR_FILE_API (-2).
+/// Switching releases the text context during the media encoder at the cost
+/// of a reload.
+bool qnnMediaGraphSwitching(String backend, String? soc) =>
+    isLlmQnnBackend(backend) && soc == 'qcs6490';
+
 int llmContextLength(String path, String backend) {
   final qnn = isLlmQnnBackend(backend);
   if (qnn != path.toLowerCase().endsWith('.qnn')) {
