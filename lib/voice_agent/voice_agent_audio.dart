@@ -228,6 +228,7 @@ class VoiceAgentSpeechQueue {
     _wake();
     await stopPlayback();
     await Future.wait([_producer, _consumer]);
-    await worker.call('voiceRelease');
+    // The voice model stays open for the next turn; the worker's close
+    // releases it when the session ends.
   }
 }
