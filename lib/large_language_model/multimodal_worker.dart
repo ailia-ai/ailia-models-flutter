@@ -106,7 +106,10 @@ void runMultimodalWorker(SendPort events,
     List<String> Function()? backendList}) {
   final commands = ReceivePort();
   final model = (modelFactory ?? AiliaLLMModel.new)();
-  (String, String, String, int, String)? loaded;
+  (String, String, String, int, String, bool)? loaded;
+  // AiliaLLMModel keeps the setting across close(), so turn it back off
+  // only when this worker turned it on.
+  var graphSwitching = false;
   String? mtpError;
   // Conversation so far (user turns with optional media, assistant replies),
   // resent on every turn so the SDK can keep the shared KV cache prefix.
@@ -149,6 +152,8 @@ void runMultimodalWorker(SendPort events,
         // Empty when MTP is off; the assistant cannot be detached, so a
         // change reopens the model.
         request['mtpPath'] as String? ?? '',
+        // Must be configured before open, so a change reopens the model.
+        request['qnnGraphSwitching'] as bool? ?? false,
       );
       if (loaded != key) {
         model.close();
@@ -161,6 +166,10 @@ void runMultimodalWorker(SendPort events,
         final backends = (backendList ?? AiliaLLMModel.getBackendList)();
         if (!backends.contains(key.$3)) {
           throw StateError('Backend ${key.$3} not available: $backends');
+        }
+        if (key.$6 || graphSwitching) {
+          model.setQNNGraphSwitching(key.$6);
+          graphSwitching = key.$6;
         }
         model.open(key.$1, key.$4, backend: key.$3);
         // The assistant must be opened before the projector.
@@ -219,11 +228,20 @@ void runMultimodalWorker(SendPort events,
         events.send({'type': 'done', 'text': text.toString()});
       }
     } catch (error) {
+      // Status codes alone (e.g. -2) hide which QNN step failed; read the
+      // native detail before close() frees the instance.
+      var detail = '';
+      try {
+        detail = model.getErrorDetail();
+      } catch (_) {}
       // A failed native operation must not leave a cached, unusable model.
       loaded = null;
       history.clear();
       model.close();
-      events.send({'type': 'error', 'message': '$error'});
+      events.send({
+        'type': 'error',
+        'message': detail.isEmpty ? '$error' : '$error ($detail)',
+      });
     } finally {
       busy = false;
       if (closing) close();

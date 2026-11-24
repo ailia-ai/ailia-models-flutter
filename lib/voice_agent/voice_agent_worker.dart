@@ -264,6 +264,11 @@ void _runVoiceAgentWorker(SendPort events) {
         try {
           final backend = command['backend'] as String;
           final path = command['body'] as String;
+          // The camera tool sends images, so QCS6490 needs the same graph
+          // switching as VLM / ALM (see qnnMediaGraphSwitching).
+          if (command['qnnGraphSwitching'] == true) {
+            model.setQNNGraphSwitching(true);
+          }
           model.open(
             path,
             isLlmQnnBackend(backend) ? 0 : 4096,

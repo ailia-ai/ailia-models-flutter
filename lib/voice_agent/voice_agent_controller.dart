@@ -11,6 +11,7 @@ import 'package:record/record.dart';
 import 'package:wav/wav.dart';
 
 import '../audio_processing/whisper.dart';
+import '../large_language_model/qnn_model.dart';
 import '../large_language_model/qnn_runtime.dart';
 import '../text_to_speech/text_to_speech.dart';
 import '../utils/download_model.dart';
@@ -492,6 +493,10 @@ class VoiceAgentController extends ChangeNotifier {
                 'projector': _llmFiles[1],
                 'mtp': _llmFiles.length > 2 ? _llmFiles[2] : null,
                 'backend': _config.llmBackend,
+                'qnnGraphSwitching': qnnMediaGraphSwitching(
+                  _config.llmBackend,
+                  availableWindowsQnnSoc(),
+                ),
               })
               as String;
     } finally {
