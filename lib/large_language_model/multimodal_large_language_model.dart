@@ -283,6 +283,8 @@ class MultimodalLargeLanguageModel {
       'mediaPath': mediaPath,
       'mediaType': mediaType,
       'resetHistory': resetHistory,
+      'qnnGraphSwitching': qnnMediaGraphSwitching(
+          backend, isLlmQnnBackend(backend) ? availableWindowsQnnSoc() : null),
     }, onEvent: (event) {
       switch (event['type']) {
         case 'loading':
