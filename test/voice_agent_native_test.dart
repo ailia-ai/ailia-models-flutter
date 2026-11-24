@@ -109,7 +109,7 @@ void main() {
             await voice.call('synthesize', {'text': query}) as Map,
           );
           expect(audio.pcm, isNotEmpty);
-          await voice.call('voiceRelease');
+          // Like the app, keep the voice model open across turns.
           final previews = <String>[];
           models.onEvent = (event) {
             if (event['type'] == 'input') previews.add(event['text'] as String);

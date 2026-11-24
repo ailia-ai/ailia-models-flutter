@@ -617,7 +617,8 @@ void main() {
       expect(worker.synthesized, ['一。', '二。', '三。', '四。', '五。']);
       expect(played, hasLength(5));
       await queue.close();
-      expect(worker.released, isTrue);
+      // The voice model is kept for the next turn.
+      expect(worker.released, isFalse);
     },
   );
   test(
@@ -638,7 +639,8 @@ void main() {
       expect(worker.synthesized, ['一。', '二。', '三。', '四。']);
       expect(played, hasLength(4));
       await queue.close();
-      expect(worker.released, isTrue);
+      // The voice model is kept for the next turn.
+      expect(worker.released, isFalse);
     },
   );
   test(
@@ -665,7 +667,7 @@ void main() {
       worker.synthesisGate!.complete();
       await closing.timeout(const Duration(seconds: 2));
       expect(played, isFalse);
-      expect(worker.released, isTrue);
+      expect(worker.released, isFalse);
     },
   );
   test('voice initialization errors surface and cleanup never hangs', () async {

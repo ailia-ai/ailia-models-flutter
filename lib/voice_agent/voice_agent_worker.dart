@@ -316,52 +316,69 @@ void _runVoiceAgentWorker(SendPort events) {
       case 'voiceOpen':
         cancelled = false;
         check();
-        closeVoice();
+        // The model and its reference stay loaded for the whole session;
+        // only the first turn opens them.
+        if (voice != null) return null;
         final model = AiliaVoiceModel();
+        // Publish the model only once it is fully set up, so a failed open
+        // is retried on the next turn instead of reusing a partial model.
+        try {
+          final root = command['root'] as String;
+          const distill = 'gpt-sovits-v2-pro-distill';
+          const base = 'gpt-sovits-v2-pro';
+          model.openGPTSoVITSV2ProModel(
+            '$root/$distill/t2s_encoder_distill_base.onnx',
+            '$root/$distill/t2s_fsdec_distill_base.onnx',
+            '$root/$distill/t2s_sdec_distill_base.opt.onnx',
+            '$root/$base/cnhubert.onnx',
+            '$root/$distill/vits_distill_base.onnx',
+            '$root/$base/sv.onnx',
+            null,
+            null,
+            command['env'] as int,
+          );
+          model.openDictionary(
+            '$root/open_jtalk_dic_utf_8-1.11/',
+            voice_api.AILIA_VOICE_DICTIONARY_TYPE_OPEN_JTALK,
+          );
+          model.openDictionary(
+            '$root/',
+            voice_api.AILIA_VOICE_DICTIONARY_TYPE_G2P_EN,
+          );
+          final reference = model.g2p(
+            '水をマレーシアから買わなくてはならない。',
+            voice_api.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA,
+          );
+          model.setReference(
+            (command['reference'] as List).cast<double>(),
+            command['rate'] as int,
+            command['channels'] as int,
+            reference,
+          );
+        } catch (_) {
+          model.close();
+          rethrow;
+        }
         voice = model;
-        final root = command['root'] as String;
-        const distill = 'gpt-sovits-v2-pro-distill';
-        const base = 'gpt-sovits-v2-pro';
-        model.openGPTSoVITSV2ProModel(
-          '$root/$distill/t2s_encoder_distill_base.onnx',
-          '$root/$distill/t2s_fsdec_distill_base.onnx',
-          '$root/$distill/t2s_sdec_distill_base.opt.onnx',
-          '$root/$base/cnhubert.onnx',
-          '$root/$distill/vits_distill_base.onnx',
-          '$root/$base/sv.onnx',
-          null,
-          null,
-          command['env'] as int,
-        );
-        model.openDictionary(
-          '$root/open_jtalk_dic_utf_8-1.11/',
-          voice_api.AILIA_VOICE_DICTIONARY_TYPE_OPEN_JTALK,
-        );
-        model.openDictionary(
-          '$root/',
-          voice_api.AILIA_VOICE_DICTIONARY_TYPE_G2P_EN,
-        );
-        final reference = model.g2p(
-          '水をマレーシアから買わなくてはならない。',
-          voice_api.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA,
-        );
-        model.setReference(
-          (command['reference'] as List).cast<double>(),
-          command['rate'] as int,
-          command['channels'] as int,
-          reference,
-        );
         return null;
       case 'synthesize':
         check();
         final text = command['text'] as String;
-        final feature = voice!.g2p(
-          text,
-          TextToSpeech.isEnglishText(text)
-              ? voice_api.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_EN
-              : voice_api.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA,
-        );
-        final audio = voice!.inference(feature);
+        final AiliaVoiceResult audio;
+        try {
+          final feature = voice!.g2p(
+            text,
+            TextToSpeech.isEnglishText(text)
+                ? voice_api.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_EN
+                : voice_api.AILIA_VOICE_G2P_TYPE_GPT_SOVITS_JA,
+          );
+          audio = voice!.inference(feature);
+        } catch (_) {
+          // A native failure may leave the kept model unusable; reopen it
+          // on the next turn.
+          closeVoice();
+          rethrow;
+        }
         check();
         return {
           'pcm': Float64List.fromList(audio.pcm),

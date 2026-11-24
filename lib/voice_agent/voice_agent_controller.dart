@@ -404,16 +404,13 @@ class VoiceAgentController extends ChangeNotifier {
 
   Future<String> _query(String query, int turn) async {
     _state(VoiceAgentState.synthesizingQuery);
-    late VoiceAgentAudio audio;
-    try {
-      await _voice!.call('voiceOpen', _voiceArgs);
-      _check(turn);
-      audio = VoiceAgentAudio.fromMap(
-        await _voice!.call('synthesize', {'text': query}) as Map,
-      );
-    } finally {
-      await _voice!.call('voiceRelease');
-    }
+    // The voice model stays open across turns and is released with the
+    // session.
+    await _voice!.call('voiceOpen', _voiceArgs);
+    _check(turn);
+    final audio = VoiceAgentAudio.fromMap(
+      await _voice!.call('synthesize', {'text': query}) as Map,
+    );
     _check(turn);
     _state(VoiceAgentState.waitingQuery);
     await _openSpeech(turn);
