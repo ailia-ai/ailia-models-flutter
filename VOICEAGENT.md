@@ -40,7 +40,9 @@ turns, retains complete tool exchanges
 when compacting near the context limit, and continues long answers internally.
 Tool syntax is filtered from streaming text and speech. Synthesis runs beside
 generation on its own isolate and queues punctuation-delimited phrases;
-playback begins after generation, with at most two finished clips waiting.
+each clip plays as soon as it is synthesized, with at most two finished clips
+waiting. The GPT-SoVITS model and its reference audio are set up on the first
+reply and kept until the session ends, so later turns skip that setup.
 Cancellation joins native synthesis before the next recognition turn.
 
 Turn off **応答の音声合成** for text responses. In microphone mode this also skips
