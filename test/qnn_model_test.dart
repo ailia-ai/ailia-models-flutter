@@ -2,6 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ailia_models_flutter/large_language_model/qnn_model.dart';
 
 void main() {
+  test('only QCS6490 on HTP enables media graph switching', () {
+    expect(qnnMediaGraphSwitching('HTP (QNN)', 'qcs6490'), isTrue);
+    expect(qnnMediaGraphSwitching('HTP (QNN)', 'sc8380xp'), isFalse);
+    expect(qnnMediaGraphSwitching('CPU', 'qcs6490'), isFalse);
+    expect(qnnMediaGraphSwitching('HTP (QNN)', null), isFalse);
+  });
+
   test('only HTP selects the QNN context binary path', () {
     expect(isLlmQnnBackend('HTP'), isTrue);
     expect(isLlmQnnBackend('HTP (QNN): Qualcomm Hexagon HTP'), isTrue);

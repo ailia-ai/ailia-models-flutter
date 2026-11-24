@@ -9,6 +9,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Flutter 3.50 requires Gradle 9.3.1 / AGP 9.1.1 / Kotlin 2.4.10, which the
+# Android project does not use yet. Pin the last release that builds it until
+# the project migrates to AGP 9.
+env:
+  FLUTTER_VERSION: "3.47.9"
+
 jobs:
   windows-x64:
     runs-on: windows-latest
@@ -18,6 +24,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
       - run: flutter build windows --release
@@ -32,12 +39,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # subosito/flutter-action has no Windows arm64 support; install
-      # the stable channel from source instead (the flutter tool
+      # the pinned release from source instead (the flutter tool
       # bootstraps the arm64 Dart SDK by itself).
       - name: Install Flutter
         shell: pwsh
         run: |
-          git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$env:USERPROFILE\flutter"
+          git clone --depth 1 -b $env:FLUTTER_VERSION https://github.com/flutter/flutter.git "$env:USERPROFILE\flutter"
           Add-Content $env:GITHUB_PATH "$env:USERPROFILE\flutter\bin"
       - run: flutter pub get
       - run: flutter build windows --release
@@ -54,6 +61,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
       - run: flutter build macos --release
@@ -70,6 +78,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
       # CI has no signing certificates; the unsigned build still
@@ -92,6 +101,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
       - run: flutter build apk --release
@@ -114,6 +124,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
       - run: flutter build linux --release

@@ -48,7 +48,7 @@ class ModelInfo {
   bool get isSpeechToText => category == 'Speech To Text';
   bool get isTextToSpeech => category == 'Text To Speech';
   bool get usesLlmBackend =>
-      category == 'Large Language Model' ||
+      category == 'LLM' ||
       category == 'VLM' ||
       category == 'ALM' ||
       category == 'Tool Use' ||
@@ -56,7 +56,7 @@ class ModelInfo {
 
   /// Text-only LLMs get the multi-turn chat UI.
   bool get isChat =>
-      category == 'Large Language Model' && input == ModelInputKind.text;
+      category == 'LLM' && input == ModelInputKind.text;
 
   /// Whether the QNN (NPU) backend is available for this model on this
   /// device. ailia Speech needs a context binary for this SoC; the other
@@ -159,14 +159,14 @@ const List<ModelInfo> modelCatalog = [
       defaultInputText: 'こんにちは。今日はいい天気ですね。',
       group: _gptSovitsGroup, groupDefault: true),
   ModelInfo(
-      'gemma2', 'Gemma 2 2B', 'Large Language Model', ModelInputKind.text,
+      'gemma2', 'Gemma 2 2B', 'LLM', ModelInputKind.text,
       group: _llmGroup),
   ModelInfo(
-      'gemma4-e2b', 'Gemma 4 E2B', 'Large Language Model', ModelInputKind.text,
+      'gemma4-e2b', 'Gemma 4 E2B', 'LLM', ModelInputKind.text,
       qnnSupported: true,
       group: _llmGroup, groupDefault: true),
   ModelInfo(
-      'gemma4-e4b', 'Gemma 4 E4B', 'Large Language Model', ModelInputKind.text,
+      'gemma4-e4b', 'Gemma 4 E4B', 'LLM', ModelInputKind.text,
       qnnSupported: true, supportedQnnSocs: {'sc8380xp'},
       group: _llmGroup),
   ModelInfo(
@@ -283,7 +283,7 @@ IconData categoryIcon(String category) {
       return Icons.build_outlined;
     case 'Voice Agent':
       return Icons.record_voice_over;
-    case 'Large Language Model':
+    case 'LLM':
       return Icons.chat_bubble_outline;
     case 'VLM':
       return Icons.image_search;
@@ -311,7 +311,7 @@ Color categoryColor(BuildContext context, String category) {
       return scheme.secondary;
     case 'Text To Speech':
       return scheme.error;
-    case 'Large Language Model':
+    case 'LLM':
     case 'VLM':
     case 'ALM':
     case 'Tool Use':

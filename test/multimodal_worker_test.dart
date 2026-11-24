@@ -17,6 +17,10 @@ class FakeMediaModel extends AiliaLLMModel {
   bool contextFull() => full;
 
   @override
+  void setQNNGraphSwitching(bool enable) =>
+      events.send({'type': 'graphSwitching', 'enable': enable});
+
+  @override
   void open(String path, int nCtx, {String backend = 'CPU'}) {
     opens++;
     events.send({'type': 'bodyOpened'});
@@ -80,6 +84,34 @@ Map<String, dynamic> request({String media = 'image', String path = 'first'}) =>
     };
 
 void main() {
+  test('QNN graph switching is set before open and reset when dropped',
+      () async {
+    final worker = MultimodalWorker(entryPoint: fakeWorker);
+    addTearDown(worker.cancel);
+    final events = <Map>[];
+    List<Object?> switching() => events
+        .where((e) => e['type'] == 'graphSwitching')
+        .map((e) => e['enable'])
+        .toList();
+    // Off by default: the native setting is left untouched.
+    expect(await worker.run(request(), onEvent: events.add), '1:1:first');
+    expect(switching(), isEmpty);
+    events.clear();
+    final input = request()..['qnnGraphSwitching'] = true;
+    expect(await worker.run(input, onEvent: events.add), '2:1:first');
+    expect(switching(), [true]);
+    final types = events.map((e) => e['type']).toList();
+    expect(
+        types.indexOf('graphSwitching'), lessThan(types.indexOf('bodyOpened')));
+    events.clear();
+    expect(await worker.run(input, onEvent: events.add), '2:3:first');
+    expect(switching(), isEmpty);
+    // The SDK keeps the setting across close(), so it is turned back off.
+    input['qnnGraphSwitching'] = false;
+    expect(await worker.run(input, onEvent: events.add), '3:1:first');
+    expect(switching(), [false]);
+  });
+
   for (final media in ['image', 'audio']) {
     test('$media keeps the conversation and accepts text-only follow-ups',
         () async {
