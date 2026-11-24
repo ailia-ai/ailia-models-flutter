@@ -35,7 +35,7 @@ dependencies:
   ailia:
     git:
       url: https://github.com/ailia-ai/ailia-sdk-flutter.git
-      ref: main
+      ref: qnn
 
   ailia_audio:
     git:
